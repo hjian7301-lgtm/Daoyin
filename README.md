@@ -84,3 +84,4 @@ Recommended for the current public preview: Cloudflare Pages.
 - `daoyin-wireframe-prototype.md`: low-fidelity wireframe spec.
 - `PUBLIC_DEPLOYMENT_CHECKLIST.md`: public deployment checklist.
 - `CONTENT_RIGHTS_NOTES.md`: copyright and source-use notes.
+- `MVP_BACKEND_AND_CONTENT_PLAN.md`: backend, database, sharing, Kai Guang workflow, and content model plan.

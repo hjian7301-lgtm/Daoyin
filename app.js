@@ -304,7 +304,7 @@ function render() {
     "/oracle": oracleIntroPage,
     "/oracle/form": oracleFormPage,
     "/oracle/cast": castPage,
-    "/reading": () => readingPage(params.id),
+    "/reading": () => readingPage(params.id, params.s),
     "/hexagrams": hexagramsPage,
     "/shop": shopPage,
     "/product": () => productPage(params.id),
@@ -448,12 +448,14 @@ function castPage() {
   `;
 }
 
-function readingPage(id) {
-  const reading = state.readings.find((r) => r.id === id) || state.readings[state.readings.length - 1];
+function readingPage(id, sharePayload) {
+  const sharedReading = decodeSharedReading(sharePayload);
+  const reading = sharedReading || state.readings.find((r) => r.id === id) || (!id ? state.readings[state.readings.length - 1] : null);
   if (!reading) return `<main class="page"><div class="empty">No reading yet.</div></main>`;
   const hex = hexagrams[reading.hexagramId - 1];
   const changed = hexagrams[reading.changedHexagramId - 1];
   const slip = oracleSlipForReading(reading);
+  const question = reading.questionHidden ? "Hidden by sharer / 已隐藏" : escapeHtml(reading.question);
   const recs = recommendProducts(hex.tags).slice(0, 3);
   return `
     <main class="page">
@@ -469,7 +471,8 @@ function readingPage(id) {
           <p class="eyebrow">Oracle Reading</p>
           <h2>${hex.fullName} <span class="muted">${hex.symbol}</span></h2>
           <div class="meta-row"><span>Reading ID</span><strong>${reading.id}</strong></div>
-          <div class="meta-row"><span>Question</span><strong>${escapeHtml(reading.question)}</strong></div>
+          <div class="meta-row"><span>Question</span><strong>${question}</strong></div>
+          ${reading.isPublicShare ? `<div class="notice">Public shared reading. Birth data, order data, and product prices are not included in this link.</div>` : ""}
           <div class="grid two">
             <div>
               <h3>本卦</h3>
@@ -493,9 +496,9 @@ function readingPage(id) {
           <div class="share-panel">
             <div>
               <h3>Share Reading / 分享卦象</h3>
-              <p class="muted">Export a social poster. Products, prices, birth date, and order data are excluded.</p>
+              <p class="muted">Export a social poster or copy a public reading link. Products, prices, birth date, and order data are excluded.</p>
             </div>
-            <label class="check"><input type="checkbox" id="hideQuestionPoster" /> <span>Hide question on poster / 隐藏问题</span></label>
+            <label class="check"><input type="checkbox" id="hideQuestionPoster" /> <span>Hide question on poster and public link / 隐藏问题</span></label>
             <div class="share-actions">
               <button class="btn gold" data-action="export-reading" data-reading="${reading.id}" data-preset="story">Story 1080×1920</button>
               <button class="btn" data-action="export-reading" data-reading="${reading.id}" data-preset="square">Square 1080×1080</button>
@@ -1033,6 +1036,62 @@ function oracleSlipForReading(reading) {
   return oracleSlips[key];
 }
 
+function publicReadingPayload(reading, hideQuestion = false) {
+  return {
+    version: 1,
+    id: reading.id,
+    date: reading.date,
+    type: reading.type,
+    question: hideQuestion ? "" : reading.question,
+    questionHidden: hideQuestion,
+    lines: reading.lines,
+    changedLines: reading.changedLines,
+    hexagramId: reading.hexagramId,
+    changedHexagramId: reading.changedHexagramId,
+    oracleSlip: oracleSlipForReading(reading)
+  };
+}
+
+function encodeSharePayload(payload) {
+  const bytes = new TextEncoder().encode(JSON.stringify(payload));
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+}
+
+function decodeSharePayload(value) {
+  if (!value) return null;
+  try {
+    const padded = String(value).replaceAll("-", "+").replaceAll("_", "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return null;
+  }
+}
+
+function decodeSharedReading(value) {
+  const payload = decodeSharePayload(value);
+  if (!payload || payload.version !== 1 || !payload.hexagramId || !payload.changedHexagramId) return null;
+  return {
+    id: payload.id || "Shared Reading",
+    date: payload.date || "",
+    type: payload.type || "Shared",
+    question: payload.question || "",
+    questionHidden: Boolean(payload.questionHidden),
+    birthPattern: "Hidden on public share / 公开分享已隐藏",
+    lines: Array.isArray(payload.lines) ? payload.lines : [],
+    changedLines: Array.isArray(payload.changedLines) ? payload.changedLines : [],
+    hexagramId: Number(payload.hexagramId),
+    changedHexagramId: Number(payload.changedHexagramId),
+    oracleSlip: payload.oracleSlip,
+    isPublicShare: true
+  };
+}
+
 function finishReading() {
   const draft = state.draftReading;
   if (!draft || draft.casts.length < 6) return;
@@ -1063,7 +1122,8 @@ function finishReading() {
 }
 
 function exportReadingPoster(readingId, preset = "story") {
-  const reading = state.readings.find((r) => r.id === readingId);
+  const { params } = route();
+  const reading = state.readings.find((r) => r.id === readingId) || decodeSharedReading(params.s);
   if (!reading) return alert("Reading not found.");
   const hex = hexagrams[reading.hexagramId - 1];
   const changed = hexagrams[reading.changedHexagramId - 1];
@@ -1181,12 +1241,17 @@ function drawWidePoster(ctx, canvas, reading, hex, changed, hideQuestion) {
 }
 
 async function copyReadingLink(readingId) {
-  const url = `${location.origin}${location.pathname}#/reading?id=${encodeURIComponent(readingId)}`;
+  const { params } = route();
+  const reading = state.readings.find((r) => r.id === readingId) || decodeSharedReading(params.s);
+  if (!reading) return alert("Reading not found.");
+  const hideQuestion = document.getElementById("hideQuestionPoster")?.checked || false;
+  const payload = publicReadingPayload(reading, hideQuestion || reading.questionHidden);
+  const url = `${location.origin}${location.pathname}#/reading?s=${encodeURIComponent(encodeSharePayload(payload))}`;
   try {
     await navigator.clipboard.writeText(url);
-    alert("Reading link copied. It will work for others after the site is deployed online.");
+    alert("Public reading link copied. It can be opened on other devices after deployment.");
   } catch {
-    window.prompt("Copy this link. It will work for others after online deployment:", url);
+    window.prompt("Copy this public reading link:", url);
   }
 }
 
