@@ -1293,10 +1293,40 @@ function opsPage() {
               ${jobs.length ? jobs.map((job) => `<tr><td>${job.id}</td><td>${job.order_id}</td><td>${job.order_item_id}</td><td>${job.dao_yin_id || "-"}</td></tr>`).join("") : `<tr><td colspan="4">No pending jobs.</td></tr>`}
             </tbody></table>
           </div>
+          ${jobs.length ? jobs.map((job) => opsJobForm(job)).join("") : ""}
         </div>
       </section>
     </main>
   `;
+}
+
+function opsJobForm(job) {
+  return `
+    <form class="form ops-job-form" id="opsJobForm-${job.id}" data-ops-job-form style="margin-top:16px">
+      <input name="jobId" type="hidden" value="${job.id}" />
+      <h3>${job.id}</h3>
+      <div class="grid two">
+        <div class="field">
+          <label>Status</label>
+          <select name="status">
+            ${["pending", "scheduled", "in_progress", "completed", "cancelled"].map((status) => `<option value="${status}" ${job.status === status ? "selected" : ""}>${status}</option>`).join("")}
+          </select>
+        </div>
+        <div class="field"><label>Temple Location</label><input name="templeLocation" value="${escapeHtml(job.temple_location || "")}" placeholder="Temple / location" /></div>
+      </div>
+      <div class="grid two">
+        <div class="field"><label>Scheduled At</label><input name="scheduledAt" type="datetime-local" value="${datetimeLocalValue(job.scheduled_at)}" /></div>
+        <div class="field"><label>Completed At</label><input name="completedAt" type="datetime-local" value="${datetimeLocalValue(job.completed_at)}" /></div>
+      </div>
+      <div class="field"><label>Operator Notes</label><input name="operatorNotes" value="${escapeHtml(job.operator_notes || "")}" /></div>
+      <button class="btn primary" type="submit">Update Job</button>
+    </form>
+  `;
+}
+
+function datetimeLocalValue(value) {
+  if (!value) return "";
+  return String(value).replace(" ", "T").slice(0, 16);
 }
 
 function consecrationPage() {
@@ -1473,6 +1503,7 @@ document.addEventListener("submit", (event) => {
   if (event.target.id === "opsTokenForm") submitOpsToken(event.target);
   if (event.target.id === "opsCreateIdForm") submitOpsCreateId(event.target);
   if (event.target.id === "opsAssignIdForm") submitOpsAssignId(event.target);
+  if (event.target.matches("[data-ops-job-form]")) submitOpsJob(event.target);
 });
 
 document.addEventListener("click", (event) => {
@@ -2274,6 +2305,34 @@ async function submitOpsAssignId(form) {
     state.orderDataStatus = {};
     ensureOpsData(true);
     alert(`Assigned DaoYin ID: ${result.daoYinId.code}`);
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function submitOpsJob(form) {
+  const data = Object.fromEntries(new FormData(form).entries());
+
+  if (!backendStatus.available) {
+    alert("Backend API is not connected.");
+    return;
+  }
+
+  try {
+    await apiRequest(`/api/consecration-jobs/${encodeURIComponent(data.jobId)}`, {
+      method: "PATCH",
+      headers: opsHeaders(),
+      body: JSON.stringify({
+        status: data.status,
+        templeLocation: data.templeLocation,
+        scheduledAt: data.scheduledAt ? new Date(data.scheduledAt).toISOString() : null,
+        completedAt: data.completedAt ? new Date(data.completedAt).toISOString() : null,
+        operatorNotes: data.operatorNotes
+      })
+    });
+    state.opsStatus = "idle";
+    state.orderDataStatus = {};
+    ensureOpsData(true);
   } catch (err) {
     alert(err.message);
   }
