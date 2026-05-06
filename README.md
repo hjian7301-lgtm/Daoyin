@@ -60,6 +60,7 @@ The front end uses progressive sync:
 
 - Before D1 is bound, readings, account data, carts, and orders stay in local browser storage.
 - After D1 is bound and `/api/health` returns `dbConfigured:true`, signed-in oracle readings and draft orders are also sent to the API.
+- The account page reads cloud reading and order history from `/api/account?userId=...` when D1 is connected.
 - Guest readings remain local until a real account/auth flow is connected.
 
 Included API entry points:

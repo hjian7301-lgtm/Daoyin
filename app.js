@@ -202,6 +202,10 @@ const initialState = {
   draftReading: null,
   authDraft: null,
   sessionToken: null,
+  accountData: null,
+  accountDataUserId: null,
+  accountDataStatus: "idle",
+  accountDataError: "",
   adminTab: "products"
 };
 
@@ -396,6 +400,73 @@ async function apiRequest(path, options = {}) {
   return data;
 }
 
+function ensureAccountData() {
+  if (!backendStatus.available || !state.user?.id) return;
+  if (state.accountDataUserId === state.user.id && (state.accountDataStatus === "loading" || state.accountDataStatus === "ready")) return;
+
+  state.accountDataStatus = "loading";
+  state.accountDataError = "";
+  state.accountDataUserId = state.user.id;
+  save();
+
+  apiRequest(`/api/account?userId=${encodeURIComponent(state.user.id)}`)
+    .then((data) => {
+      state.accountData = {
+        account: data.account,
+        readings: data.readings || [],
+        orders: data.orders || []
+      };
+      state.accountDataStatus = "ready";
+      state.accountDataError = "";
+    })
+    .catch((err) => {
+      state.accountData = null;
+      state.accountDataStatus = "error";
+      state.accountDataError = err.message;
+    })
+    .finally(() => {
+      save();
+      if (route().path === "/account") render();
+    });
+}
+
+function cloudReadings() {
+  if (!backendStatus.available || state.accountDataUserId !== state.user?.id || state.accountDataStatus !== "ready") return [];
+  return (state.accountData?.readings || []).map(remoteReadingToLocal);
+}
+
+function accountReadings() {
+  const remote = cloudReadings();
+  if (backendStatus.available && state.accountDataUserId === state.user?.id && state.accountDataStatus === "ready") return remote;
+  return state.readings.filter((r) => r.userId === state.user.id);
+}
+
+function accountOrders() {
+  if (backendStatus.available && state.accountDataUserId === state.user?.id && state.accountDataStatus === "ready") {
+    return state.accountData?.orders || [];
+  }
+
+  return state.orders.filter((o) => o.userId === state.user.id);
+}
+
+function remoteReadingToLocal(reading) {
+  return {
+    id: reading.id,
+    serverId: reading.id,
+    userId: reading.userId,
+    date: reading.readingDate,
+    type: reading.questionType,
+    question: reading.questionText || "",
+    birthPattern: reading.birth?.patternSummary || "Stored in account history",
+    lines: reading.lines || [],
+    changedLines: reading.changedLines || [],
+    hexagramId: Number(reading.hexagramId),
+    changedHexagramId: Number(reading.changedHexagramId),
+    oracleSlip: reading.oracleSlip,
+    apiSynced: true
+  };
+}
+
 function homePage() {
   return `
     <main class="page hero">
@@ -525,7 +596,8 @@ function castPage() {
 
 function readingPage(id, sharePayload) {
   const sharedReading = decodeSharedReading(sharePayload);
-  const reading = sharedReading || state.readings.find((r) => r.id === id) || (!id ? state.readings[state.readings.length - 1] : null);
+  const remoteReadings = state.user ? cloudReadings() : [];
+  const reading = sharedReading || state.readings.find((r) => r.id === id) || remoteReadings.find((r) => r.id === id) || (!id ? state.readings[state.readings.length - 1] || remoteReadings[0] : null);
   if (!reading) return `<main class="page"><div class="empty">No reading yet.</div></main>`;
   const hex = hexagrams[reading.hexagramId - 1];
   const changed = hexagrams[reading.changedHexagramId - 1];
@@ -759,8 +831,9 @@ function checkoutPage() {
 }
 
 function orderPage(id) {
-  const order = state.orders.find((o) => o.id === id);
+  const order = state.orders.find((o) => o.id === id) || accountOrders().find((o) => o.id === id);
   if (!order) return `<main class="page"><div class="empty panel">Order not found.</div></main>`;
+  const items = order.items || [];
   return `
     <main class="page">
       <section class="grid two">
@@ -768,8 +841,8 @@ function orderPage(id) {
           <p class="eyebrow">Order Details</p>
           <h2>${order.id}</h2>
           <div class="meta-row"><span>Status</span><strong>${order.status}</strong></div>
-          ${order.items.map((item) => {
-            const p = state.products.find((x) => x.id === item.productId);
+          ${items.length ? items.map((item) => {
+            const p = state.products.find((x) => x.id === item.productId) || { name: "Stored order item" };
             return `
               <div class="panel slim" style="margin-top:16px">
                 <h3>${p.name}</h3>
@@ -780,7 +853,13 @@ function orderPage(id) {
                 <div class="timeline-row"><span>Shipped</span><strong>Pending</strong></div>
               </div>
             `;
-          }).join("")}
+          }).join("") : `
+            <div class="panel slim" style="margin-top:16px">
+              <div class="meta-row"><span>Total</span><strong>${orderTotalLabel(order)}</strong></div>
+              <div class="meta-row"><span>Payment</span><strong>${order.payment_status || "not_connected"}</strong></div>
+              <p class="muted">Cloud order summary loaded from D1. Item detail loading will be connected in the next order module pass.</p>
+            </div>
+          `}
         </div>
         <aside class="panel">
           <h3>Recorded Video</h3>
@@ -829,8 +908,10 @@ function accountPage() {
       </main>
     `;
   }
-  const readings = state.readings.filter((r) => r.userId === state.user.id);
-  const orders = state.orders.filter((o) => o.userId === state.user.id);
+  ensureAccountData();
+  const readings = accountReadings();
+  const orders = accountOrders();
+  const historySource = backendStatus.available && state.accountDataStatus === "ready" ? "Cloud D1" : "Local browser";
   return `
     <main class="page">
       <div class="section-head">
@@ -839,21 +920,35 @@ function accountPage() {
       </div>
       <section class="grid two">
         <div class="panel">
-          <h3>Reading History</h3>
+          <h3>Reading History <span class="muted">/ ${historySource}</span></h3>
           ${readings.length ? readings.map((r) => `<div class="meta-row"><span>${r.date} · ${hexagrams[r.hexagramId - 1].fullName}</span><a class="btn ghost" href="#/reading?id=${r.id}">View</a></div>`).join("") : `<p class="muted">No readings yet.</p>`}
         </div>
         <div class="panel">
-          <h3>Orders</h3>
-          ${orders.length ? orders.map((o) => `<div class="meta-row"><span>${o.id} · $${o.total}</span><a class="btn ghost" href="#/order?id=${o.id}">View</a></div>`).join("") : `<p class="muted">No orders yet.</p>`}
+          <h3>Orders <span class="muted">/ ${historySource}</span></h3>
+          ${orders.length ? orders.map((o) => `<div class="meta-row"><span>${o.id} · ${orderTotalLabel(o)} · ${o.status}</span><a class="btn ghost" href="#/order?id=${o.id}">View</a></div>`).join("") : `<p class="muted">No orders yet.</p>`}
         </div>
         <div class="panel">
           <h3>Backend Sync</h3>
           ${backendStatusPanel()}
-          <p class="muted">Readings and draft orders are saved locally first. When D1 is connected, signed-in activity will also be sent to the API.</p>
+          <p class="muted">${accountSyncMessage()}</p>
         </div>
       </section>
     </main>
   `;
+}
+
+function orderTotalLabel(order) {
+  if (typeof order.total === "number") return `$${order.total}`;
+  const total = Number(order.subtotal || 0) + Number(order.service_total || 0) + Number(order.shipping_total || 0);
+  return `$${total}`;
+}
+
+function accountSyncMessage() {
+  if (!backendStatus.available) return "D1 is not connected. Account history is local to this browser.";
+  if (state.accountDataStatus === "loading") return "Loading cloud account history from D1.";
+  if (state.accountDataStatus === "error") return `Cloud account history could not be loaded: ${state.accountDataError}`;
+  if (state.accountDataStatus === "ready") return "Cloud account history is loaded from D1. New signed-in readings and draft orders sync to the backend.";
+  return "Cloud account history is ready to load.";
 }
 
 function backendStatusPanel() {
@@ -1055,6 +1150,10 @@ function handleClick(event) {
     state.user = null;
     state.sessionToken = null;
     state.authDraft = null;
+    state.accountData = null;
+    state.accountDataUserId = null;
+    state.accountDataStatus = "idle";
+    state.accountDataError = "";
     save();
     render();
   }
@@ -1276,6 +1375,7 @@ async function syncReadingIfPossible(reading) {
     reading.serverId = result.reading.id;
     reading.publicShareToken = result.reading.publicShareToken;
     reading.apiSynced = true;
+    state.accountDataStatus = "idle";
   } catch (err) {
     reading.apiSynced = false;
     reading.apiError = err.message;
@@ -1691,6 +1791,7 @@ async function syncOrderIfPossible(order, checkoutData) {
 
     order.serverId = result.order.id;
     order.apiSynced = true;
+    state.accountDataStatus = "idle";
   } catch (err) {
     order.apiSynced = false;
     order.apiError = err.message;
@@ -1775,6 +1876,10 @@ async function submitVerifyLogin(form) {
     state.user = result.user;
     state.sessionToken = result.session.token;
     state.authDraft = null;
+    state.accountData = null;
+    state.accountDataUserId = null;
+    state.accountDataStatus = "idle";
+    state.accountDataError = "";
     const existing = state.users.find((u) => u.id === result.user.id);
     if (existing) Object.assign(existing, result.user);
     else state.users.push(result.user);
