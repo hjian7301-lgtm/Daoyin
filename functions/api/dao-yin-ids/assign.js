@@ -1,4 +1,4 @@
-import { error, handleApi, json, readJson, requireDb } from "../../_lib/api.js";
+import { error, handleApi, json, readJson, requireDb, requireOps } from "../../_lib/api.js";
 
 function parseProductSnapshot(row) {
   try {
@@ -78,6 +78,7 @@ async function selectDaoYinId(db, body, snapshot) {
 
 export function onRequestPost({ env, request }) {
   return handleApi(async () => {
+    requireOps(env, request);
     const db = requireDb(env);
     const body = await readJson(request);
     const { order, item, snapshot } = await loadAssignment(db, body);

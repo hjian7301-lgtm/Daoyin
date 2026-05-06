@@ -1,9 +1,10 @@
-import { error, handleApi, json, newId, readJson, requireDb } from "../../_lib/api.js";
+import { error, handleApi, json, newId, readJson, requireDb, requireOps } from "../../_lib/api.js";
 
 const JOB_STATUS = new Set(["pending", "scheduled", "in_progress", "completed", "cancelled"]);
 
 export function onRequestGet({ env, request }) {
   return handleApi(async () => {
+    requireOps(env, request);
     const db = requireDb(env);
     const url = new URL(request.url);
     const status = url.searchParams.get("status") || "pending";
@@ -28,6 +29,7 @@ export function onRequestGet({ env, request }) {
 
 export function onRequestPost({ env, request }) {
   return handleApi(async () => {
+    requireOps(env, request);
     const db = requireDb(env);
     const body = await readJson(request);
 

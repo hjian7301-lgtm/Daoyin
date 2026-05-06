@@ -212,6 +212,7 @@ const initialState = {
   opsData: null,
   opsStatus: "idle",
   opsError: "",
+  opsTokenSet: false,
   adminTab: "products"
 };
 
@@ -424,6 +425,22 @@ async function apiRequest(path, options = {}) {
   return data;
 }
 
+function opsToken() {
+  return localStorage.getItem("daoyin_ops_token") || "";
+}
+
+function opsHeaders() {
+  const token = opsToken();
+  return token ? { "x-ops-token": token } : {};
+}
+
+function setOpsToken(token) {
+  const clean = String(token || "").trim();
+  if (clean) localStorage.setItem("daoyin_ops_token", clean);
+  else localStorage.removeItem("daoyin_ops_token");
+  state.opsTokenSet = Boolean(clean);
+}
+
 function ensureAccountData() {
   if (!backendStatus.available || !state.user?.id) return;
   if (state.accountDataUserId === state.user.id && (state.accountDataStatus === "loading" || state.accountDataStatus === "ready")) return;
@@ -518,8 +535,8 @@ function ensureOpsData(force = false) {
   save();
 
   Promise.all([
-    apiRequest("/api/dao-yin-ids?status=available"),
-    apiRequest("/api/consecration-jobs?status=pending")
+    apiRequest("/api/dao-yin-ids?status=available", { headers: opsHeaders() }),
+    apiRequest("/api/consecration-jobs?status=pending", { headers: opsHeaders() })
   ])
     .then(([idsData, jobsData]) => {
       state.opsData = {
@@ -1212,6 +1229,7 @@ function adminContent() {
 }
 
 function opsPage() {
+  state.opsTokenSet = Boolean(opsToken());
   if (backendStatus.available) ensureOpsData();
   const ids = state.opsData?.ids || [];
   const jobs = state.opsData?.jobs || [];
@@ -1223,6 +1241,16 @@ function opsPage() {
         <button class="btn ghost" data-action="ops-refresh">Refresh</button>
       </div>
       ${!backendStatus.available ? `<div class="notice">Backend D1 is not connected. Operations require the Cloudflare API.</div>` : ""}
+      <section class="panel" style="margin-bottom:18px">
+        <h3>Operations Token</h3>
+        <form class="form" id="opsTokenForm">
+          <div class="field"><label>Token</label><input name="token" type="password" placeholder="${state.opsTokenSet ? "Token saved in this browser" : "Enter internal OPS_TOKEN"}" /></div>
+          <div class="button-row">
+            <button class="btn primary" type="submit">Save Token</button>
+            <button class="btn ghost" type="button" data-action="ops-clear-token">Clear Token</button>
+          </div>
+        </form>
+      </section>
       ${state.opsStatus === "loading" ? `<div class="notice">Loading operations data from D1.</div>` : ""}
       ${state.opsStatus === "error" ? `<div class="notice">Could not load operations data: ${escapeHtml(state.opsError)}</div>` : ""}
       <section class="grid two">
@@ -1407,6 +1435,13 @@ function handleClick(event) {
     ensureOpsData(true);
     render();
   }
+  if (action === "ops-clear-token") {
+    setOpsToken("");
+    state.opsStatus = "idle";
+    state.opsData = null;
+    save();
+    render();
+  }
 }
 
 function handleInput(event) {
@@ -1435,6 +1470,7 @@ document.addEventListener("submit", (event) => {
   if (event.target.id === "loginForm") submitLogin(event.target);
   if (event.target.id === "verifyLoginForm") submitVerifyLogin(event.target);
   if (event.target.id === "productForm") submitProduct(event.target);
+  if (event.target.id === "opsTokenForm") submitOpsToken(event.target);
   if (event.target.id === "opsCreateIdForm") submitOpsCreateId(event.target);
   if (event.target.id === "opsAssignIdForm") submitOpsAssignId(event.target);
 });
@@ -2176,6 +2212,17 @@ async function submitVerifyLogin(form) {
   render();
 }
 
+function submitOpsToken(form) {
+  const data = Object.fromEntries(new FormData(form).entries());
+  setOpsToken(data.token);
+  form.reset();
+  state.opsStatus = "idle";
+  state.opsData = null;
+  save();
+  ensureOpsData(true);
+  render();
+}
+
 async function submitOpsCreateId(form) {
   const data = Object.fromEntries(new FormData(form).entries());
 
@@ -2187,6 +2234,7 @@ async function submitOpsCreateId(form) {
   try {
     await apiRequest("/api/dao-yin-ids", {
       method: "POST",
+      headers: opsHeaders(),
       body: JSON.stringify({
         code: data.code,
         productSku: data.productSku,
@@ -2213,6 +2261,7 @@ async function submitOpsAssignId(form) {
   try {
     const result = await apiRequest("/api/dao-yin-ids/assign", {
       method: "POST",
+      headers: opsHeaders(),
       body: JSON.stringify({
         orderId: data.orderId,
         orderItemId: data.orderItemId,

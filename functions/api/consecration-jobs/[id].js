@@ -1,9 +1,10 @@
-import { error, handleApi, json, readJson, requireDb } from "../../_lib/api.js";
+import { error, handleApi, json, readJson, requireDb, requireOps } from "../../_lib/api.js";
 
 const JOB_STATUS = new Set(["pending", "scheduled", "in_progress", "completed", "cancelled"]);
 
-export function onRequestGet({ env, params }) {
+export function onRequestGet({ env, params, request }) {
   return handleApi(async () => {
+    requireOps(env, request);
     const db = requireDb(env);
     const job = await db.prepare("SELECT * FROM consecration_jobs WHERE id = ?").bind(params.id).first();
 
@@ -20,6 +21,7 @@ export function onRequestGet({ env, params }) {
 
 export function onRequestPatch({ env, params, request }) {
   return handleApi(async () => {
+    requireOps(env, request);
     const db = requireDb(env);
     const body = await readJson(request);
 

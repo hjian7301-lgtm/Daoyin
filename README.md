@@ -73,6 +73,7 @@ Hidden operations page:
 ```
 
 This internal prototype page can create DaoYin IDs, view pending Kai Guang jobs, and assign DaoYin IDs to order items. It is not linked in public navigation.
+Operations APIs require the Cloudflare `OPS_TOKEN` environment variable and the browser page stores the entered token locally.
 
 Included API entry points:
 

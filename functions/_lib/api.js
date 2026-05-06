@@ -44,6 +44,26 @@ export function requireDb(env) {
   return env.DB;
 }
 
+export function requireOps(env, request) {
+  const expected = env.OPS_TOKEN;
+
+  if (!expected) {
+    const configError = new Error("Operations token is not configured.");
+    configError.status = 503;
+    throw configError;
+  }
+
+  const auth = request.headers.get("authorization") || "";
+  const bearer = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : "";
+  const provided = request.headers.get("x-ops-token") || bearer;
+
+  if (!provided || provided !== expected) {
+    const authError = new Error("Operations token is required.");
+    authError.status = 401;
+    throw authError;
+  }
+}
+
 export async function handleApi(handler) {
   try {
     return await handler();
