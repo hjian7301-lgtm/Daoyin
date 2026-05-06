@@ -54,6 +54,8 @@ To share the prototype with other people, use one of these options:
 
 The repository now includes a Cloudflare Pages Functions and D1 scaffold for the next MVP layer. The current UI still works as a static prototype, and the API becomes active after a Cloudflare D1 database is created and bound to the Pages project as `DB`.
 
+Cloudflare routing is limited to `/api/*` through `_routes.json`, so normal page routes remain static and continue to use the SPA fallback in `_redirects`.
+
 Included API entry points:
 
 - `GET /api/health`: deployment and DB binding check.
@@ -114,6 +116,7 @@ Recommended for the current public preview: Cloudflare Pages.
 - `app.js`: prototype routes, data, interactions, poster export.
 - `functions/`: Cloudflare Pages Functions API scaffold.
 - `database/schema.sql`: Cloudflare D1 schema.
+- `_routes.json`: Cloudflare Pages Functions route scope for `/api/*`.
 - `daoyin-functional-prototype.md`: functional spec.
 - `daoyin-wireframe-prototype.md`: low-fidelity wireframe spec.
 - `PUBLIC_DEPLOYMENT_CHECKLIST.md`: public deployment checklist.

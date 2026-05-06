@@ -265,6 +265,11 @@ Current repository scaffold:
 
 The current scaffold keeps admin-only endpoints simple while the admin permission model is still undecided. Before production launch, DaoYin ID creation and order operations should be protected behind authenticated admin or customer sessions.
 
+Cloudflare Pages Function invocation is scoped by `_routes.json`:
+
+- include: `/api/*`
+- static pages: handled by `_redirects` SPA fallback
+
 ### Oracle
 
 - `POST /api/readings`
