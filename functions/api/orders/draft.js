@@ -80,11 +80,41 @@ export function onRequestPost({ env, request }) {
           Number(item.estimatedDaysMax || 0),
         )
         .run();
+
+      if (item.kaiGuangSelected) {
+        await db
+          .prepare(
+            `INSERT INTO consecration_jobs (
+              id,
+              order_id,
+              order_item_id,
+              dao_yin_id,
+              status,
+              temple_location,
+              operator_notes
+            )
+            VALUES (?, ?, ?, NULL, 'pending', ?, ?)`,
+          )
+          .bind(
+            newId("KG"),
+            orderId,
+            itemId,
+            item.templeLocation || null,
+            item.recordingSelected
+              ? "Auto-created from draft order. Recorded consecration requested after Kai Guang."
+              : "Auto-created from draft order.",
+          )
+          .run();
+      }
     }
 
     const order = await db.prepare("SELECT * FROM orders WHERE id = ?").bind(orderId).first();
     const { results: orderItems } = await db
       .prepare("SELECT * FROM order_items WHERE order_id = ? ORDER BY created_at ASC")
+      .bind(orderId)
+      .all();
+    const { results: consecrationJobs } = await db
+      .prepare("SELECT * FROM consecration_jobs WHERE order_id = ? ORDER BY created_at ASC")
       .bind(orderId)
       .all();
 
@@ -93,6 +123,7 @@ export function onRequestPost({ env, request }) {
         ok: true,
         order,
         items: orderItems,
+        consecrationJobs,
       },
       { status: 201 },
     );

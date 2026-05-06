@@ -913,15 +913,17 @@ function orderPage(id) {
           ${orderStatus === "error" ? `<div class="notice">Could not load cloud order detail: ${escapeHtml(state.orderDataError[key])}</div>` : ""}
           ${items.length ? items.map((item) => {
             const p = state.products.find((x) => x.id === item.productId) || item.productSnapshot || { name: "Stored order item" };
+            const job = consecrationJobForItem(order, item);
             return `
               <div class="panel slim" style="margin-top:16px">
                 <h3>${p.name}</h3>
                 <div class="meta-row"><span>Quantity</span><strong>${item.quantity || 1}</strong></div>
                 <div class="meta-row"><span>DaoYin ID / 道印编号</span><strong>${item.daoYinId || "Assigned after payment"}</strong></div>
                 <div class="timeline-row"><span>Payment</span><strong>${order.payment_status || (order.status === "Paid" ? "paid" : "not_connected")}</strong></div>
-                <div class="timeline-row"><span>Kai Guang / 开光</span><strong>${item.kaiGuang ? "Pending" : "Not selected"}</strong></div>
-                <div class="timeline-row"><span>Recorded Consecration / 实地开光录制</span><strong>${item.recorded ? "Pending" : "Not selected"}</strong></div>
+                <div class="timeline-row"><span>Kai Guang / 开光</span><strong>${item.kaiGuang ? job?.status || "pending" : "Not selected"}</strong></div>
+                <div class="timeline-row"><span>Recorded Consecration / 实地开光录制</span><strong>${item.recorded ? "Requested after Kai Guang" : "Not selected"}</strong></div>
                 <div class="timeline-row"><span>Fulfillment time</span><strong>${item.estimatedDaysMin && item.estimatedDaysMax ? `${item.estimatedDaysMin}-${item.estimatedDaysMax} days` : `${item.days || "Pending"} days`}</strong></div>
+                ${job ? `<div class="meta-row"><span>Kai Guang Job</span><strong>${job.id}</strong></div>` : ""}
               </div>
             `;
           }).join("") : `
@@ -936,6 +938,7 @@ function orderPage(id) {
           <h3>Recorded Video</h3>
           <p class="muted">Available after recording is completed. The recording must show the DaoYin ID / 道印编号 for verification of uniqueness.</p>
           <div class="notice">No certificate or certificate verification module is included in this prototype.</div>
+          ${consecrationJobsHtml(order)}
         </aside>
       </section>
     </main>
@@ -946,6 +949,7 @@ function normalizedOrderItems(order) {
   return (order.items || []).map((item) => {
     const snapshot = parseMaybeJson(item.product_snapshot_json, null) || item.productSnapshot || null;
     return {
+      id: item.id,
       productId: item.productId || item.product_id,
       productSnapshot: snapshot,
       quantity: item.quantity || 1,
@@ -957,6 +961,30 @@ function normalizedOrderItems(order) {
       estimatedDaysMax: item.estimatedDaysMax || item.estimated_days_max
     };
   });
+}
+
+function normalizedConsecrationJobs(order) {
+  return order.consecrationJobs || order.consecration_jobs || [];
+}
+
+function consecrationJobForItem(order, item) {
+  return normalizedConsecrationJobs(order).find((job) => {
+    return job.order_item_id === item.id || job.orderItemId === item.id;
+  }) || null;
+}
+
+function consecrationJobsHtml(order) {
+  const jobs = normalizedConsecrationJobs(order);
+  if (!jobs.length) return `<p class="muted">No Kai Guang job has been created for this order.</p>`;
+
+  return `
+    <div class="panel slim" style="margin-top:16px">
+      <h3>Kai Guang Jobs / 开光任务</h3>
+      ${jobs.map((job) => `
+        <div class="timeline-row"><span>${job.id}</span><strong>${job.status}</strong></div>
+      `).join("")}
+    </div>
+  `;
 }
 
 function parseMaybeJson(value, fallback) {

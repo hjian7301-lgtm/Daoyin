@@ -30,8 +30,12 @@ async function loadOrder(db, orderId, userId) {
     .prepare("SELECT * FROM order_items WHERE order_id = ? ORDER BY created_at ASC")
     .bind(orderId)
     .all();
+  const { results: consecrationJobs } = await db
+    .prepare("SELECT * FROM consecration_jobs WHERE order_id = ? ORDER BY created_at ASC")
+    .bind(orderId)
+    .all();
 
-  return { ...order, items };
+  return { ...order, items, consecrationJobs };
 }
 
 export function onRequestGet({ env, params, request }) {

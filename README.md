@@ -63,6 +63,7 @@ The front end uses progressive sync:
 - The account page reads cloud reading and order history from `/api/account?userId=...` when D1 is connected.
 - The order detail page reads D1 item details from `/api/orders/:id?userId=...` when D1 is connected.
 - Logged-in oracle entry checks D1 account history before allowing a new daily reading.
+- Draft orders automatically create pending Kai Guang jobs for items with Kai Guang selected.
 - Guest readings remain local until a real account/auth flow is connected.
 
 Included API entry points:
