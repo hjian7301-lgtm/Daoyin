@@ -206,6 +206,9 @@ const initialState = {
   accountDataUserId: null,
   accountDataStatus: "idle",
   accountDataError: "",
+  orderData: {},
+  orderDataStatus: {},
+  orderDataError: {},
   adminTab: "products"
 };
 
@@ -447,6 +450,42 @@ function accountOrders() {
   }
 
   return state.orders.filter((o) => o.userId === state.user.id);
+}
+
+function orderCacheKey(orderId) {
+  return `${state.user?.id || "guest"}:${orderId}`;
+}
+
+function ensureOrderData(orderId) {
+  if (!backendStatus.available || !state.user?.id || !orderId) return;
+  const key = orderCacheKey(orderId);
+  if (state.orderDataStatus[key] === "loading" || state.orderDataStatus[key] === "ready") return;
+
+  state.orderDataStatus[key] = "loading";
+  state.orderDataError[key] = "";
+  save();
+
+  apiRequest(`/api/orders/${encodeURIComponent(orderId)}?userId=${encodeURIComponent(state.user.id)}`)
+    .then((data) => {
+      state.orderData[key] = data.order;
+      state.orderDataStatus[key] = "ready";
+      state.orderDataError[key] = "";
+    })
+    .catch((err) => {
+      state.orderDataStatus[key] = "error";
+      state.orderDataError[key] = err.message;
+    })
+    .finally(() => {
+      save();
+      const current = route();
+      if (current.path === "/order" && current.params.id === orderId) render();
+    });
+}
+
+function cloudOrder(orderId) {
+  const key = orderCacheKey(orderId);
+  if (state.orderDataStatus[key] !== "ready") return null;
+  return state.orderData[key] || null;
 }
 
 function remoteReadingToLocal(reading) {
@@ -831,9 +870,14 @@ function checkoutPage() {
 }
 
 function orderPage(id) {
-  const order = state.orders.find((o) => o.id === id) || accountOrders().find((o) => o.id === id);
+  ensureOrderData(id);
+  const key = orderCacheKey(id);
+  const orderStatus = state.orderDataStatus[key] || "idle";
+  const order = state.orders.find((o) => o.id === id) || cloudOrder(id) || accountOrders().find((o) => o.id === id);
+  if (!order && orderStatus === "loading") return `<main class="page"><div class="empty panel">Loading order detail from D1.</div></main>`;
+  if (!order && orderStatus === "error") return `<main class="page"><div class="empty panel">Could not load order detail: ${escapeHtml(state.orderDataError[key])}</div></main>`;
   if (!order) return `<main class="page"><div class="empty panel">Order not found.</div></main>`;
-  const items = order.items || [];
+  const items = normalizedOrderItems(order);
   return `
     <main class="page">
       <section class="grid two">
@@ -841,23 +885,26 @@ function orderPage(id) {
           <p class="eyebrow">Order Details</p>
           <h2>${order.id}</h2>
           <div class="meta-row"><span>Status</span><strong>${order.status}</strong></div>
+          ${backendStatus.available ? `<div class="meta-row"><span>Detail source</span><strong>${orderStatus === "ready" ? "Cloud D1" : orderStatus === "loading" ? "Loading D1 detail" : state.orders.find((o) => o.id === id) ? "Local browser" : "Cloud summary"}</strong></div>` : ""}
+          ${orderStatus === "error" ? `<div class="notice">Could not load cloud order detail: ${escapeHtml(state.orderDataError[key])}</div>` : ""}
           ${items.length ? items.map((item) => {
-            const p = state.products.find((x) => x.id === item.productId) || { name: "Stored order item" };
+            const p = state.products.find((x) => x.id === item.productId) || item.productSnapshot || { name: "Stored order item" };
             return `
               <div class="panel slim" style="margin-top:16px">
                 <h3>${p.name}</h3>
-                <div class="meta-row"><span>DaoYin ID / 道印编号</span><strong>${item.daoYinId}</strong></div>
-                <div class="timeline-row"><span>Paid</span><strong>Done</strong></div>
+                <div class="meta-row"><span>Quantity</span><strong>${item.quantity || 1}</strong></div>
+                <div class="meta-row"><span>DaoYin ID / 道印编号</span><strong>${item.daoYinId || "Assigned after payment"}</strong></div>
+                <div class="timeline-row"><span>Payment</span><strong>${order.payment_status || (order.status === "Paid" ? "paid" : "not_connected")}</strong></div>
                 <div class="timeline-row"><span>Kai Guang / 开光</span><strong>${item.kaiGuang ? "Pending" : "Not selected"}</strong></div>
                 <div class="timeline-row"><span>Recorded Consecration / 实地开光录制</span><strong>${item.recorded ? "Pending" : "Not selected"}</strong></div>
-                <div class="timeline-row"><span>Shipped</span><strong>Pending</strong></div>
+                <div class="timeline-row"><span>Fulfillment time</span><strong>${item.estimatedDaysMin && item.estimatedDaysMax ? `${item.estimatedDaysMin}-${item.estimatedDaysMax} days` : `${item.days || "Pending"} days`}</strong></div>
               </div>
             `;
           }).join("") : `
             <div class="panel slim" style="margin-top:16px">
               <div class="meta-row"><span>Total</span><strong>${orderTotalLabel(order)}</strong></div>
               <div class="meta-row"><span>Payment</span><strong>${order.payment_status || "not_connected"}</strong></div>
-              <p class="muted">Cloud order summary loaded from D1. Item detail loading will be connected in the next order module pass.</p>
+              <p class="muted">${orderStatus === "loading" ? "Loading order items from D1." : "No order items available yet."}</p>
             </div>
           `}
         </div>
@@ -869,6 +916,32 @@ function orderPage(id) {
       </section>
     </main>
   `;
+}
+
+function normalizedOrderItems(order) {
+  return (order.items || []).map((item) => {
+    const snapshot = parseMaybeJson(item.product_snapshot_json, null) || item.productSnapshot || null;
+    return {
+      productId: item.productId || item.product_id,
+      productSnapshot: snapshot,
+      quantity: item.quantity || 1,
+      daoYinId: item.daoYinId || item.dao_yin_id,
+      kaiGuang: Boolean(item.kaiGuang || item.kai_guang_selected),
+      recorded: Boolean(item.recorded || item.recording_selected),
+      days: item.days,
+      estimatedDaysMin: item.estimatedDaysMin || item.estimated_days_min,
+      estimatedDaysMax: item.estimatedDaysMax || item.estimated_days_max
+    };
+  });
+}
+
+function parseMaybeJson(value, fallback) {
+  if (!value || typeof value !== "string") return fallback;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
 }
 
 function accountPage() {
@@ -1154,6 +1227,9 @@ function handleClick(event) {
     state.accountDataUserId = null;
     state.accountDataStatus = "idle";
     state.accountDataError = "";
+    state.orderData = {};
+    state.orderDataStatus = {};
+    state.orderDataError = {};
     save();
     render();
   }
@@ -1880,6 +1956,9 @@ async function submitVerifyLogin(form) {
     state.accountDataUserId = null;
     state.accountDataStatus = "idle";
     state.accountDataError = "";
+    state.orderData = {};
+    state.orderDataStatus = {};
+    state.orderDataError = {};
     const existing = state.users.find((u) => u.id === result.user.id);
     if (existing) Object.assign(existing, result.user);
     else state.users.push(result.user);
