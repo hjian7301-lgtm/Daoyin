@@ -270,9 +270,26 @@ function todayKey() {
 }
 
 function hasReadingToday() {
-  const uid = currentUserId();
   const today = todayKey();
-  return state.readings.some((r) => r.userId === uid && r.date === today);
+  return Boolean(todayReading()) || oracleLimitStatus() === "loading";
+}
+
+function todayReading() {
+  const today = todayKey();
+
+  if (state.user && backendStatus.available && state.accountDataUserId === state.user.id && state.accountDataStatus === "ready") {
+    return accountReadings().find((r) => r.date === today) || null;
+  }
+
+  const uid = currentUserId();
+  return state.readings.find((r) => r.userId === uid && r.date === today) || null;
+}
+
+function oracleLimitStatus() {
+  if (!state.user || !backendStatus.available) return "local";
+  if (state.accountDataUserId === state.user.id && state.accountDataStatus === "ready") return "ready";
+  if (state.accountDataUserId === state.user.id && state.accountDataStatus === "error") return "error";
+  return "loading";
 }
 
 function shell(content) {
@@ -529,7 +546,10 @@ function homePage() {
 }
 
 function oracleIntroPage() {
+  if (state.user && backendStatus.available) ensureAccountData();
   const blocked = hasReadingToday();
+  const status = oracleLimitStatus();
+  const existingReading = todayReading();
   return `
     <main class="page">
       <section class="grid two">
@@ -541,9 +561,12 @@ function oracleIntroPage() {
             <div class="rule-item"><strong>不诚不占</strong><span>心绪杂乱或抱着玩乐心态时，往往难以得其正。</span><p class="muted">Sincerity keeps the reading clear.</p></div>
             <div class="rule-item"><strong>一事一占</strong><span>请针对一件具体事情起卦，不要同时混问多事。</span><p class="muted">One matter, one reading.</p></div>
           </div>
-          ${blocked ? `
+          ${status === "loading" ? `
+            <div class="notice">Checking today's oracle record from D1. 已登录账号需先确认今日是否已经起卦。</div>
+            <div class="button-row"><a class="btn primary" href="#/account">View Account</a><a class="btn" href="#/shop">Shop Ritual Objects</a></div>
+          ` : blocked ? `
             <div class="notice">每日一卦，贵在慎问。今日已完成起卦，可明日再问；商品浏览与购买不受限制。</div>
-            <div class="button-row"><a class="btn" href="#/account">View Previous Reading</a><a class="btn primary" href="#/shop">Shop Ritual Objects</a></div>
+            <div class="button-row">${existingReading ? `<a class="btn primary" href="#/reading?id=${existingReading.id}">View Today's Reading</a>` : `<a class="btn" href="#/account">View Previous Reading</a>`}<a class="btn" href="#/shop">Shop Ritual Objects</a></div>
           ` : `
             <label class="check"><input type="checkbox" id="oracleConsent" /> <span>I understand and will ask with sincerity.</span></label>
             <div class="button-row"><button class="btn primary" data-action="continue-oracle" disabled>Continue / 继续</button></div>
@@ -551,7 +574,8 @@ function oracleIntroPage() {
         </div>
         <aside class="panel">
           <h3>Daily Rule</h3>
-          <p class="muted">Each ID can complete one oracle reading per day. Shopping, checkout, and order management remain unlimited.</p>
+          <p class="muted">Each account can complete one oracle reading per day. Logged-in users are checked against D1; shopping, checkout, and order management remain unlimited.</p>
+          ${status === "ready" ? `<div class="tag-row"><span class="tag">Cloud D1 rule active</span></div>` : ""}
           <div class="hex-lines">
             ${renderLines([1, 0, 1, 0, 1, 1])}
           </div>
@@ -1411,7 +1435,14 @@ async function finishReading() {
     apiSynced: false
   };
   reading.oracleSlip = oracleSlipForReading(reading);
-  await syncReadingIfPossible(reading);
+  const syncResult = await syncReadingIfPossible(reading);
+  if (syncResult?.blocked) {
+    state.draftReading = null;
+    save();
+    if (syncResult.existingReadingId) nav(`/reading?id=${syncResult.existingReadingId}`);
+    else nav("/account");
+    return;
+  }
   state.readings.push(reading);
   state.draftReading = null;
   save();
@@ -1419,7 +1450,7 @@ async function finishReading() {
 }
 
 async function syncReadingIfPossible(reading) {
-  if (!backendStatus.available || !state.user?.email) return;
+  if (!backendStatus.available || !state.user?.email) return { synced: false };
 
   try {
     const result = await apiRequest("/api/readings", {
@@ -1452,13 +1483,46 @@ async function syncReadingIfPossible(reading) {
     reading.publicShareToken = result.reading.publicShareToken;
     reading.apiSynced = true;
     state.accountDataStatus = "idle";
+    return { synced: true };
   } catch (err) {
     reading.apiSynced = false;
     reading.apiError = err.message;
     if (err.status === 409) {
-      alert("This account has already created one oracle reading today on the server. The current result is kept locally.");
+      await refreshAccountData();
+      const existing = todayReading();
+      alert("This account has already created one oracle reading today. Redirecting to today's record.");
+      return {
+        synced: false,
+        blocked: true,
+        existingReadingId: existing?.id || err.details?.existingReadingId
+      };
     }
+    return { synced: false, error: err.message };
   }
+}
+
+async function refreshAccountData() {
+  if (!backendStatus.available || !state.user?.id) return;
+  state.accountDataStatus = "idle";
+  state.accountDataUserId = null;
+  await apiRequest(`/api/account?userId=${encodeURIComponent(state.user.id)}`)
+    .then((data) => {
+      state.accountData = {
+        account: data.account,
+        readings: data.readings || [],
+        orders: data.orders || []
+      };
+      state.accountDataStatus = "ready";
+      state.accountDataError = "";
+      state.accountDataUserId = state.user.id;
+    })
+    .catch((err) => {
+      state.accountData = null;
+      state.accountDataStatus = "error";
+      state.accountDataError = err.message;
+      state.accountDataUserId = state.user.id;
+    });
+  save();
 }
 
 function exportReadingPoster(readingId, preset = "story") {
