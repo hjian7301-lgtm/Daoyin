@@ -80,6 +80,7 @@ Included API entry points:
 - `GET /api/hexagrams/:id`: hexagram detail with line text.
 - `GET /api/dao-yin-ids?status=available`: DaoYin ID inventory.
 - `POST /api/dao-yin-ids`: create DaoYin ID records.
+- `POST /api/dao-yin-ids/assign`: assign an available DaoYin ID to an order item.
 - `POST /api/orders/draft`: create a non-payment order draft.
 - `GET /api/orders/:id?userId=...`: order detail.
 - `PATCH /api/orders/:id`: update non-payment order fields.

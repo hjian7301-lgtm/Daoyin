@@ -918,7 +918,7 @@ function orderPage(id) {
               <div class="panel slim" style="margin-top:16px">
                 <h3>${p.name}</h3>
                 <div class="meta-row"><span>Quantity</span><strong>${item.quantity || 1}</strong></div>
-                <div class="meta-row"><span>DaoYin ID / 道印编号</span><strong>${item.daoYinId || "Assigned after payment"}</strong></div>
+                <div class="meta-row"><span>DaoYin ID / 道印编号</span><strong>${daoYinCodeForItem(order, item) || "Assigned after payment"}</strong></div>
                 <div class="timeline-row"><span>Payment</span><strong>${order.payment_status || (order.status === "Paid" ? "paid" : "not_connected")}</strong></div>
                 <div class="timeline-row"><span>Kai Guang / 开光</span><strong>${item.kaiGuang ? job?.status || "pending" : "Not selected"}</strong></div>
                 <div class="timeline-row"><span>Recorded Consecration / 实地开光录制</span><strong>${item.recorded ? "Requested after Kai Guang" : "Not selected"}</strong></div>
@@ -965,6 +965,19 @@ function normalizedOrderItems(order) {
 
 function normalizedConsecrationJobs(order) {
   return order.consecrationJobs || order.consecration_jobs || [];
+}
+
+function normalizedDaoYinIds(order) {
+  return order.daoYinIds || order.dao_yin_ids || [];
+}
+
+function daoYinCodeForItem(order, item) {
+  const id = item.daoYinId;
+  if (!id) return "";
+  const record = normalizedDaoYinIds(order).find((daoId) => {
+    return daoId.id === id || daoId.order_item_id === item.id || daoId.orderItemId === item.id;
+  });
+  return record?.code || id;
 }
 
 function consecrationJobForItem(order, item) {

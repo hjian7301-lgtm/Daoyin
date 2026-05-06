@@ -132,6 +132,9 @@ CREATE TABLE IF NOT EXISTS orders (
 CREATE INDEX IF NOT EXISTS idx_orders_user_id
 ON orders(user_id);
 
+CREATE INDEX IF NOT EXISTS idx_orders_payment_status
+ON orders(payment_status);
+
 CREATE TABLE IF NOT EXISTS order_items (
   id TEXT PRIMARY KEY,
   order_id TEXT NOT NULL,
@@ -150,6 +153,9 @@ CREATE TABLE IF NOT EXISTS order_items (
   FOREIGN KEY (order_id) REFERENCES orders(id),
   FOREIGN KEY (dao_yin_id) REFERENCES dao_yin_ids(id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_order_items_order_id
+ON order_items(order_id);
 
 CREATE TABLE IF NOT EXISTS consecration_jobs (
   id TEXT PRIMARY KEY,
