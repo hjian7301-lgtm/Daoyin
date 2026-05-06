@@ -1,0 +1,10 @@
+{
+  "name": "daoyin-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DaoYin / 道印 clickable static prototype.",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check app.js && node --check server.js"
+  }
+}
