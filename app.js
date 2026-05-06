@@ -204,6 +204,13 @@ const initialState = {
 };
 
 let state = loadState();
+const backendStatus = {
+  checked: false,
+  checking: false,
+  available: false,
+  dbConfigured: false,
+  message: "Not checked"
+};
 
 function loadState() {
   try {
@@ -280,6 +287,7 @@ function shell(content) {
           ${navs.map(([href, label]) => `<a class="${path.startsWith(href) ? "active" : ""}" href="#${href}">${label}</a>`).join("")}
         </nav>
         <div class="actions">
+          <span class="backend-pill ${backendStatus.available ? "ready" : backendStatus.checked ? "offline" : ""}" title="${escapeHtml(backendStatus.message)}">${backendStatus.available ? "API Live" : backendStatus.checked ? "Local Mode" : "API..."}</span>
           <button class="lang" data-action="toggle-lang">${state.lang === "en" ? "EN | 中文" : "中文 | EN"}</button>
           <a class="account-pill" href="#/account">${state.user ? state.user.name : "Account"}</a>
           <a class="icon-link" href="#/cart" title="Cart">Cart ${state.cart.length ? `(${state.cart.length})` : ""}</a>
@@ -298,6 +306,7 @@ function shell(content) {
 }
 
 function render() {
+  ensureBackendStatus();
   const { path, params } = route();
   const routes = {
     "/": homePage,
@@ -319,6 +328,70 @@ function render() {
   };
   const view = routes[path] || homePage;
   document.getElementById("app").innerHTML = shell(view());
+}
+
+function apiBase() {
+  if (location.protocol !== "http:" && location.protocol !== "https:") return null;
+  return "";
+}
+
+function ensureBackendStatus() {
+  if (backendStatus.checked || backendStatus.checking) return;
+  const base = apiBase();
+
+  if (!base && base !== "") {
+    backendStatus.checked = true;
+    backendStatus.available = false;
+    backendStatus.dbConfigured = false;
+    backendStatus.message = "Local file preview. Backend API is available only after deployment or local server preview.";
+    return;
+  }
+
+  backendStatus.checking = true;
+  fetch(`${base}/api/health`, { headers: { accept: "application/json" } })
+    .then((response) => response.json())
+    .then((data) => {
+      backendStatus.checked = true;
+      backendStatus.available = Boolean(data.ok && data.dbConfigured);
+      backendStatus.dbConfigured = Boolean(data.dbConfigured);
+      backendStatus.message = backendStatus.available
+        ? "Backend API and D1 database are connected."
+        : "Backend API is live, but Cloudflare D1 binding DB is not configured yet.";
+    })
+    .catch(() => {
+      backendStatus.checked = true;
+      backendStatus.available = false;
+      backendStatus.dbConfigured = false;
+      backendStatus.message = "Backend API is not reachable. The prototype will use local browser storage.";
+    })
+    .finally(() => {
+      backendStatus.checking = false;
+      render();
+    });
+}
+
+async function apiRequest(path, options = {}) {
+  const base = apiBase();
+  if (!base && base !== "") throw new Error("Backend API is not available in file preview.");
+
+  const response = await fetch(`${base}${path}`, {
+    ...options,
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      ...(options.headers || {})
+    }
+  });
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok || data.ok === false) {
+    const err = new Error(data.error?.message || `API request failed with ${response.status}.`);
+    err.status = response.status;
+    err.details = data.error?.details;
+    throw err;
+  }
+
+  return data;
 }
 
 function homePage() {
@@ -731,7 +804,11 @@ function accountPage() {
               <button class="btn primary" type="submit">Continue</button>
             </form>
           </div>
-          <div class="panel"><h3>Prototype account system</h3><p class="muted">This creates a local browser account and links readings, carts, and orders to it.</p></div>
+          <div class="panel">
+            <h3>Prototype account system</h3>
+            <p class="muted">This creates a local browser account and links readings, carts, and orders to it.</p>
+            ${backendStatusPanel()}
+          </div>
         </section>
       </main>
     `;
@@ -753,8 +830,23 @@ function accountPage() {
           <h3>Orders</h3>
           ${orders.length ? orders.map((o) => `<div class="meta-row"><span>${o.id} · $${o.total}</span><a class="btn ghost" href="#/order?id=${o.id}">View</a></div>`).join("") : `<p class="muted">No orders yet.</p>`}
         </div>
+        <div class="panel">
+          <h3>Backend Sync</h3>
+          ${backendStatusPanel()}
+          <p class="muted">Readings and draft orders are saved locally first. When D1 is connected, signed-in activity will also be sent to the API.</p>
+        </div>
       </section>
     </main>
+  `;
+}
+
+function backendStatusPanel() {
+  const status = backendStatus.available ? "Connected" : backendStatus.checked ? "Local browser storage" : "Checking";
+  return `
+    <div class="backend-card ${backendStatus.available ? "ready" : ""}">
+      <div class="meta-row"><span>Storage mode</span><strong>${status}</strong></div>
+      <p class="muted">${backendStatus.message}</p>
+    </div>
   `;
 }
 
@@ -1092,7 +1184,7 @@ function decodeSharedReading(value) {
   };
 }
 
-function finishReading() {
+async function finishReading() {
   const draft = state.draftReading;
   if (!draft || draft.casts.length < 6) return;
   const lines = draft.casts.map((c) => c.line);
@@ -1109,16 +1201,64 @@ function finishReading() {
     type: draft.type,
     question: draft.question,
     birthPattern: birthPattern(draft.birthDate, draft.birthTime),
+    birthDate: draft.birthDate,
+    birthTime: draft.birthTime,
+    birthCountry: draft.birthCountry,
+    birthCity: draft.birthCity,
     lines,
     changedLines,
     hexagramId,
-    changedHexagramId
+    changedHexagramId,
+    apiSynced: false
   };
   reading.oracleSlip = oracleSlipForReading(reading);
+  await syncReadingIfPossible(reading);
   state.readings.push(reading);
   state.draftReading = null;
   save();
   nav(`/reading?id=${reading.id}`);
+}
+
+async function syncReadingIfPossible(reading) {
+  if (!backendStatus.available || !state.user?.email) return;
+
+  try {
+    const result = await apiRequest("/api/readings", {
+      method: "POST",
+      body: JSON.stringify({
+        userId: state.user.id,
+        email: state.user.email,
+        displayName: state.user.name,
+        locale: state.lang,
+        questionType: reading.type,
+        questionText: reading.question,
+        questionVisibility: "private",
+        birthDate: reading.birthDate,
+        birthTime: reading.birthTime,
+        birthCountry: reading.birthCountry,
+        birthCity: reading.birthCity,
+        birthPatternSummary: reading.birthPattern,
+        lines: reading.lines,
+        changedLines: reading.changedLines,
+        hexagramId: reading.hexagramId,
+        changedHexagramId: reading.changedHexagramId,
+        slipGrade: reading.oracleSlip.grade,
+        slipPoem: reading.oracleSlip.poem,
+        slipGuidance: reading.oracleSlip.guidance,
+        readingDate: reading.date
+      })
+    });
+
+    reading.serverId = result.reading.id;
+    reading.publicShareToken = result.reading.publicShareToken;
+    reading.apiSynced = true;
+  } catch (err) {
+    reading.apiSynced = false;
+    reading.apiError = err.message;
+    if (err.status === 409) {
+      alert("This account has already created one oracle reading today on the server. The current result is kept locally.");
+    }
+  }
 }
 
 function exportReadingPoster(readingId, preset = "story") {
@@ -1459,7 +1599,7 @@ function addCart(productId) {
   nav("/cart");
 }
 
-function submitCheckout(form) {
+async function submitCheckout(form) {
   const data = Object.fromEntries(new FormData(form).entries());
   if (!state.user) {
     state.user = { id: `u-${Date.now()}`, name: data.name, email: data.email };
@@ -1479,12 +1619,58 @@ function submitCheckout(form) {
     status: items.some((item) => item.kaiGuang) ? "Consecration Pending" : "Paid",
     total,
     items,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    apiSynced: false
   };
+  await syncOrderIfPossible(order, data);
   state.orders.push(order);
   state.cart = [];
   save();
   nav(`/order?id=${order.id}`);
+}
+
+async function syncOrderIfPossible(order, checkoutData) {
+  if (!backendStatus.available || !state.user?.email) return;
+
+  try {
+    const result = await apiRequest("/api/orders/draft", {
+      method: "POST",
+      body: JSON.stringify({
+        userId: state.user.id,
+        email: state.user.email,
+        displayName: state.user.name,
+        locale: state.lang,
+        currency: "USD",
+        shippingAddress: {
+          name: checkoutData.name,
+          address: checkoutData.address,
+          country: checkoutData.country,
+          postal: checkoutData.postal
+        },
+        items: order.items.map((item) => {
+          const product = state.products.find((p) => p.id === item.productId);
+          return {
+            productId: item.productId,
+            productSnapshot: product,
+            quantity: 1,
+            unitPrice: product?.price || 0,
+            kaiGuangSelected: item.kaiGuang,
+            kaiGuangFee: item.kaiGuang ? product?.kaiGuangPrice || 0 : 0,
+            recordingSelected: item.recorded,
+            recordingFee: item.recorded ? product?.recordPrice || 0 : 0,
+            estimatedDaysMin: Math.max(5, item.days - 3),
+            estimatedDaysMax: item.days
+          };
+        })
+      })
+    });
+
+    order.serverId = result.order.id;
+    order.apiSynced = true;
+  } catch (err) {
+    order.apiSynced = false;
+    order.apiError = err.message;
+  }
 }
 
 function assignDaoId(product, item, orderId) {

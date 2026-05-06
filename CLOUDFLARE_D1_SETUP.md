@@ -97,6 +97,8 @@ Expected after D1 binding:
 {"ok":true,"readings":[]}
 ```
 
+The site header should also change from `Local Mode` to `API Live` after the browser refreshes.
+
 ## Notes
 
 - The current front end still uses local browser storage.

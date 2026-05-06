@@ -56,6 +56,12 @@ The repository now includes a Cloudflare Pages Functions and D1 scaffold for the
 
 Cloudflare routing is limited to `/api/*` through `_routes.json`, so normal page routes remain static and continue to use the SPA fallback in `_redirects`.
 
+The front end uses progressive sync:
+
+- Before D1 is bound, readings, account data, carts, and orders stay in local browser storage.
+- After D1 is bound and `/api/health` returns `dbConfigured:true`, signed-in oracle readings and draft orders are also sent to the API.
+- Guest readings remain local until a real account/auth flow is connected.
+
 Included API entry points:
 
 - `GET /api/health`: deployment and DB binding check.
