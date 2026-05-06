@@ -4,6 +4,7 @@ node_modules/
 .env.*
 dist/
 build/
+daoyin-public-deploy.zip
 
 # Internal planning docs kept locally for now because the GitHub repo is public.
 daoyin-functional-prototype.md
