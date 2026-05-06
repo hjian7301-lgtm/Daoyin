@@ -50,6 +50,38 @@ To share the prototype with other people, use one of these options:
 - Full BaZi calculation is not implemented yet; the current birth pattern is a placeholder.
 - Hexagram interpretation content is prototype-level and should be reviewed by a content/cultural expert.
 
+## Backend Scaffold
+
+The repository now includes a Cloudflare Pages Functions and D1 scaffold for the next MVP layer. The current UI still works as a static prototype, and the API becomes active after a Cloudflare D1 database is created and bound to the Pages project as `DB`.
+
+Included API entry points:
+
+- `GET /api/health`: deployment and DB binding check.
+- `GET /api/account?userId=...`: account summary, reading history, order history.
+- `GET /api/readings?userId=...`: account reading history.
+- `POST /api/readings`: create one reading per account per day.
+- `GET /api/readings/:id?userId=...`: private reading detail.
+- `GET /api/share/readings/:token`: public shared reading without birth data.
+- `GET /api/hexagrams`: hexagram content list.
+- `GET /api/hexagrams/:id`: hexagram detail with line text.
+- `GET /api/dao-yin-ids?status=available`: DaoYin ID inventory.
+- `POST /api/dao-yin-ids`: create DaoYin ID records.
+- `POST /api/orders/draft`: create a non-payment order draft.
+- `GET /api/orders/:id?userId=...`: order detail.
+- `PATCH /api/orders/:id`: update non-payment order fields.
+- `GET /api/consecration-jobs?status=pending`: Kai Guang job list.
+- `POST /api/consecration-jobs`: create Kai Guang job.
+- `GET /api/consecration-jobs/:id`: Kai Guang job detail.
+- `PATCH /api/consecration-jobs/:id`: update Kai Guang job.
+- `GET /api/consecration-recordings?jobId=...`: recording metadata list.
+- `POST /api/consecration-recordings`: create recording metadata.
+
+D1 schema:
+
+```bash
+database/schema.sql
+```
+
 ## Suggested Static Deployment
 
 Recommended for the current public preview: Cloudflare Pages.
@@ -80,6 +112,8 @@ Recommended for the current public preview: Cloudflare Pages.
 - `index.html`: app shell.
 - `styles.css`: visual system and layout.
 - `app.js`: prototype routes, data, interactions, poster export.
+- `functions/`: Cloudflare Pages Functions API scaffold.
+- `database/schema.sql`: Cloudflare D1 schema.
 - `daoyin-functional-prototype.md`: functional spec.
 - `daoyin-wireframe-prototype.md`: low-fidelity wireframe spec.
 - `PUBLIC_DEPLOYMENT_CHECKLIST.md`: public deployment checklist.

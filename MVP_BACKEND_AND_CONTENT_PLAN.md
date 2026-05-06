@@ -241,6 +241,30 @@ Review statuses:
 
 ## API Surface
 
+Current repository scaffold:
+
+- `GET /api/health`
+- `GET /api/account?userId=...`
+- `GET /api/readings?userId=...`
+- `POST /api/readings`
+- `GET /api/readings/:id?userId=...`
+- `GET /api/share/readings/:token`
+- `GET /api/hexagrams`
+- `GET /api/hexagrams/:id`
+- `GET /api/dao-yin-ids?status=available`
+- `POST /api/dao-yin-ids`
+- `POST /api/orders/draft`
+- `GET /api/orders/:id?userId=...`
+- `PATCH /api/orders/:id`
+- `GET /api/consecration-jobs?status=pending`
+- `POST /api/consecration-jobs`
+- `GET /api/consecration-jobs/:id`
+- `PATCH /api/consecration-jobs/:id`
+- `GET /api/consecration-recordings?jobId=...`
+- `POST /api/consecration-recordings`
+
+The current scaffold keeps admin-only endpoints simple while the admin permission model is still undecided. Before production launch, DaoYin ID creation and order operations should be protected behind authenticated admin or customer sessions.
+
 ### Oracle
 
 - `POST /api/readings`
@@ -390,6 +414,8 @@ Later backend behavior:
 
 ### Milestone 2: Database Foundation
 
+Status: scaffolded in repository.
+
 Create D1 tables:
 
 - users
@@ -402,7 +428,13 @@ Create D1 tables:
 - consecration_jobs
 - consecration_recordings
 
+Implementation file:
+
+- `database/schema.sql`
+
 ### Milestone 3: Reading API
+
+Status: scaffolded, pending D1 binding and frontend integration.
 
 Move oracle creation from localStorage to API:
 
@@ -411,7 +443,15 @@ Move oracle creation from localStorage to API:
 - account history works across devices
 - public share token generated server-side
 
+Implementation files:
+
+- `functions/api/readings/index.js`
+- `functions/api/readings/[id].js`
+- `functions/api/share/readings/[token].js`
+
 ### Milestone 4: Admin Workflow
+
+Status: partially scaffolded for DaoYin ID and order draft records.
 
 Build admin views for:
 
@@ -422,9 +462,20 @@ Build admin views for:
 - Kai Guang jobs
 - recordings
 
+Implementation files:
+
+- `functions/api/account.js`
+- `functions/api/dao-yin-ids/index.js`
+- `functions/api/orders/draft.js`
+- `functions/api/orders/[id].js`
+- `functions/api/hexagrams/index.js`
+- `functions/api/hexagrams/[id].js`
+- `functions/api/consecration-jobs/index.js`
+- `functions/api/consecration-jobs/[id].js`
+- `functions/api/consecration-recordings/index.js`
+
 ### Milestone 5: Payment Integration
 
 Deferred.
 
 When ready, integrate payment after order draft creation and before fulfillment status changes to paid.
-
