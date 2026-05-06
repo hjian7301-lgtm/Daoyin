@@ -66,6 +66,34 @@ export function shareToken() {
   return crypto.randomUUID().replaceAll("-", "").slice(0, 24);
 }
 
+export function authCode() {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+export function sessionToken() {
+  return crypto.randomUUID().replaceAll("-", "") + crypto.randomUUID().replaceAll("-", "");
+}
+
+export function normalizeEmail(email) {
+  return String(email || "").trim().toLowerCase();
+}
+
+export function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(email));
+}
+
+export async function stableUserId(email) {
+  const normalized = normalizeEmail(email);
+  const bytes = new TextEncoder().encode(normalized);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const hex = [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, 16)
+    .toUpperCase();
+  return `U-${hex}`;
+}
+
 export function parseJsonField(value, fallback) {
   if (value === null || value === undefined || value === "") {
     return fallback;
@@ -123,8 +151,10 @@ export function privateReadingRow(row) {
 }
 
 export async function upsertUser(db, body) {
-  if (!body.userId || !body.email) {
-    const userError = new Error("userId and email are required.");
+  const email = normalizeEmail(body.email);
+
+  if (!body.userId || !isValidEmail(email)) {
+    const userError = new Error("userId and valid email are required.");
     userError.status = 400;
     throw userError;
   }
@@ -139,6 +169,6 @@ export async function upsertUser(db, body) {
          locale = COALESCE(excluded.locale, users.locale),
          last_login_at = CURRENT_TIMESTAMP`,
     )
-    .bind(body.userId, body.email, body.displayName || null, body.locale || "en")
+    .bind(body.userId, email, body.displayName || null, body.locale || "en")
     .run();
 }

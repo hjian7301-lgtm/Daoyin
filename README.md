@@ -65,6 +65,8 @@ The front end uses progressive sync:
 Included API entry points:
 
 - `GET /api/health`: deployment and DB binding check.
+- `POST /api/auth/start`: create a development email verification code.
+- `POST /api/auth/verify`: verify code, create or update user, return session token.
 - `GET /api/account?userId=...`: account summary, reading history, order history.
 - `GET /api/readings?userId=...`: account reading history.
 - `POST /api/readings`: create one reading per account per day.

@@ -200,6 +200,8 @@ const initialState = {
   products: productsSeed,
   daoIds: idSeed,
   draftReading: null,
+  authDraft: null,
+  sessionToken: null,
   adminTab: "products"
 };
 
@@ -792,21 +794,35 @@ function orderPage(id) {
 
 function accountPage() {
   if (!state.user) {
+    const draft = state.authDraft;
     return `
       <main class="page">
         <section class="grid two">
           <div class="panel">
             <p class="eyebrow">Account</p>
-            <h2>Sign in</h2>
-            <form class="form" id="loginForm">
-              <div class="field"><label>Email</label><input name="email" type="email" required /></div>
-              <div class="field"><label>Name</label><input name="name" required /></div>
-              <button class="btn primary" type="submit">Continue</button>
-            </form>
+            <h2>${draft ? "Verify email" : "Sign in"}</h2>
+            ${draft ? `
+              <form class="form" id="verifyLoginForm">
+                <div class="field"><label>Email</label><input name="email" type="email" readonly value="${escapeHtml(draft.email)}" /></div>
+                <div class="field"><label>Verification Code</label><input name="code" inputmode="numeric" pattern="[0-9]{6}" required placeholder="6-digit code" /></div>
+                <input name="name" type="hidden" value="${escapeHtml(draft.name)}" />
+                <div class="notice">Development code: <strong>${draft.devCode}</strong>. In production this code will be sent by email.</div>
+                <div class="button-row">
+                  <button class="btn primary" type="submit">Verify and sign in</button>
+                  <button class="btn ghost" type="button" data-action="cancel-login">Use another email</button>
+                </div>
+              </form>
+            ` : `
+              <form class="form" id="loginForm">
+                <div class="field"><label>Email</label><input name="email" type="email" required /></div>
+                <div class="field"><label>Name</label><input name="name" required /></div>
+                <button class="btn primary" type="submit">Send Code</button>
+              </form>
+            `}
           </div>
           <div class="panel">
             <h3>Prototype account system</h3>
-            <p class="muted">This creates a local browser account and links readings, carts, and orders to it.</p>
+            <p class="muted">Development login uses a visible verification code. It creates a stable D1 user account when the backend is connected.</p>
             ${backendStatusPanel()}
           </div>
         </section>
@@ -1037,6 +1053,13 @@ function handleClick(event) {
   }
   if (action === "logout") {
     state.user = null;
+    state.sessionToken = null;
+    state.authDraft = null;
+    save();
+    render();
+  }
+  if (action === "cancel-login") {
+    state.authDraft = null;
     save();
     render();
   }
@@ -1071,6 +1094,7 @@ document.addEventListener("submit", (event) => {
   if (event.target.id === "oracleForm") submitOracleForm(event.target);
   if (event.target.id === "checkoutForm") submitCheckout(event.target);
   if (event.target.id === "loginForm") submitLogin(event.target);
+  if (event.target.id === "verifyLoginForm") submitVerifyLogin(event.target);
   if (event.target.id === "productForm") submitProduct(event.target);
 });
 
@@ -1696,11 +1720,68 @@ function nextDaoId(product) {
   return `DY-2026-${cls}-${String(count).padStart(5, "0")}`;
 }
 
-function submitLogin(form) {
+async function submitLogin(form) {
   const data = Object.fromEntries(new FormData(form).entries());
-  const existing = state.users.find((u) => u.email === data.email);
-  state.user = existing || { id: `u-${Date.now()}`, name: data.name, email: data.email };
-  if (!existing) state.users.push(state.user);
+
+  if (!backendStatus.available) {
+    const existing = state.users.find((u) => u.email === data.email);
+    state.user = existing || { id: `u-${Date.now()}`, name: data.name, email: data.email };
+    if (!existing) state.users.push(state.user);
+    save();
+    render();
+    return;
+  }
+
+  try {
+    const result = await apiRequest("/api/auth/start", {
+      method: "POST",
+      body: JSON.stringify({
+        email: data.email,
+        displayName: data.name,
+        locale: state.lang
+      })
+    });
+    state.authDraft = {
+      email: result.email,
+      name: data.name,
+      devCode: result.devCode
+    };
+  } catch (err) {
+    alert(err.message);
+  }
+
+  save();
+  render();
+}
+
+async function submitVerifyLogin(form) {
+  const data = Object.fromEntries(new FormData(form).entries());
+
+  if (!backendStatus.available) {
+    alert("Backend API is not connected. Use local sign in instead.");
+    return;
+  }
+
+  try {
+    const result = await apiRequest("/api/auth/verify", {
+      method: "POST",
+      body: JSON.stringify({
+        email: data.email,
+        code: data.code,
+        displayName: data.name,
+        locale: state.lang
+      })
+    });
+    state.user = result.user;
+    state.sessionToken = result.session.token;
+    state.authDraft = null;
+    const existing = state.users.find((u) => u.id === result.user.id);
+    if (existing) Object.assign(existing, result.user);
+    else state.users.push(result.user);
+  } catch (err) {
+    alert(err.message);
+  }
+
   save();
   render();
 }

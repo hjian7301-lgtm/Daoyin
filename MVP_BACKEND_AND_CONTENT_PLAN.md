@@ -244,6 +244,8 @@ Review statuses:
 Current repository scaffold:
 
 - `GET /api/health`
+- `POST /api/auth/start`
+- `POST /api/auth/verify`
 - `GET /api/account?userId=...`
 - `GET /api/readings?userId=...`
 - `POST /api/readings`
@@ -287,7 +289,7 @@ Cloudflare Pages Function invocation is scoped by `_routes.json`:
 ### Account
 
 - `POST /api/auth/start`
-  Sends login code.
+  Creates a development login code. Production should send this code by email.
 
 - `POST /api/auth/verify`
   Verifies login code and creates session.

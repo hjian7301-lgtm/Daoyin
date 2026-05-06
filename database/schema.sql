@@ -12,6 +12,30 @@ CREATE TABLE IF NOT EXISTS users (
   last_login_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS auth_codes (
+  id TEXT PRIMARY KEY,
+  email TEXT NOT NULL,
+  code TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  consumed_at TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_auth_codes_email_created_at
+ON auth_codes(email, created_at);
+
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  token TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at TEXT,
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id
+ON auth_sessions(user_id);
+
 CREATE TABLE IF NOT EXISTS oracle_readings (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
@@ -159,4 +183,3 @@ CREATE TABLE IF NOT EXISTS consecration_recordings (
   FOREIGN KEY (consecration_job_id) REFERENCES consecration_jobs(id),
   FOREIGN KEY (dao_yin_id) REFERENCES dao_yin_ids(id)
 );
-
