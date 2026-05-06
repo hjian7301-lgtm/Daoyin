@@ -8,17 +8,24 @@ export function onRequestGet({ env, request }) {
     const db = requireDb(env);
     const url = new URL(request.url);
     const status = url.searchParams.get("status") || "pending";
-
-    const { results } = await db
-      .prepare(
-        `SELECT *
-         FROM consecration_jobs
-         WHERE status = ?
-         ORDER BY created_at DESC
-         LIMIT 100`,
-      )
-      .bind(status)
-      .all();
+    const query =
+      status === "all"
+        ? db.prepare(
+            `SELECT *
+             FROM consecration_jobs
+             ORDER BY created_at DESC
+             LIMIT 100`,
+          )
+        : db
+            .prepare(
+              `SELECT *
+               FROM consecration_jobs
+               WHERE status = ?
+               ORDER BY created_at DESC
+               LIMIT 100`,
+            )
+            .bind(status);
+    const { results } = await query.all();
 
     return json({
       ok: true,

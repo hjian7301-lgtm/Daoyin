@@ -43,8 +43,26 @@ async function loadOrder(db, orderId, userId) {
     )
     .bind(orderId)
     .all();
+  const { results: consecrationRecordings } = await db
+    .prepare(
+      `SELECT
+         recordings.id,
+         recordings.consecration_job_id,
+         recordings.dao_yin_id,
+         CASE WHEN recordings.customer_visible = 1 THEN recordings.r2_object_key ELSE NULL END AS r2_object_key,
+         recordings.duration_seconds,
+         recordings.review_status,
+         recordings.customer_visible,
+         recordings.uploaded_at
+       FROM consecration_recordings recordings
+       JOIN consecration_jobs jobs ON jobs.id = recordings.consecration_job_id
+       WHERE jobs.order_id = ?
+       ORDER BY recordings.uploaded_at DESC`,
+    )
+    .bind(orderId)
+    .all();
 
-  return { ...order, items, consecrationJobs, daoYinIds };
+  return { ...order, items, consecrationJobs, daoYinIds, consecrationRecordings };
 }
 
 export function onRequestGet({ env, params, request }) {

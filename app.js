@@ -536,7 +536,7 @@ function ensureOpsData(force = false) {
 
   Promise.all([
     apiRequest("/api/dao-yin-ids?status=available", { headers: opsHeaders() }),
-    apiRequest("/api/consecration-jobs?status=pending", { headers: opsHeaders() })
+    apiRequest("/api/consecration-jobs?status=all", { headers: opsHeaders() })
   ])
     .then(([idsData, jobsData]) => {
       state.opsData = {
@@ -975,6 +975,7 @@ function orderPage(id) {
                 <div class="timeline-row"><span>Recorded Consecration / 实地开光录制</span><strong>${item.recorded ? "Requested after Kai Guang" : "Not selected"}</strong></div>
                 <div class="timeline-row"><span>Fulfillment time</span><strong>${item.estimatedDaysMin && item.estimatedDaysMax ? `${item.estimatedDaysMin}-${item.estimatedDaysMax} days` : `${item.days || "Pending"} days`}</strong></div>
                 ${job ? `<div class="meta-row"><span>Kai Guang Job</span><strong>${job.id}</strong></div>` : ""}
+                ${job ? recordingSummaryHtml(order, job) : ""}
               </div>
             `;
           }).join("") : `
@@ -1022,6 +1023,10 @@ function normalizedDaoYinIds(order) {
   return order.daoYinIds || order.dao_yin_ids || [];
 }
 
+function normalizedConsecrationRecordings(order) {
+  return order.consecrationRecordings || order.consecration_recordings || [];
+}
+
 function daoYinCodeForItem(order, item) {
   const id = item.daoYinId;
   if (!id) return "";
@@ -1046,9 +1051,40 @@ function consecrationJobsHtml(order) {
       <h3>Kai Guang Jobs / 开光任务</h3>
       ${jobs.map((job) => `
         <div class="timeline-row"><span>${job.id}</span><strong>${job.status}</strong></div>
+        ${recordingSummaryHtml(order, job)}
       `).join("")}
     </div>
   `;
+}
+
+function recordingsForJob(order, job) {
+  return normalizedConsecrationRecordings(order).filter((recording) => {
+    return recording.consecration_job_id === job.id || recording.consecrationJobId === job.id;
+  });
+}
+
+function recordingSummaryHtml(order, job) {
+  const recordings = recordingsForJob(order, job);
+  if (!recordings.length) return "";
+
+  return `
+    <div class="notice">
+      ${recordings.map((recording) => {
+        const visible = Boolean(recording.customer_visible || recording.customerVisible);
+        if (!visible) return "Recording uploaded, under review";
+        return `Recording available: ${recordingReferenceHtml(recording)}`;
+      }).join("<br>")}
+    </div>
+  `;
+}
+
+function recordingReferenceHtml(recording) {
+  const value = recording.r2_object_key || recording.r2ObjectKey || "";
+  if (!value) return "No reference yet";
+  if (/^https?:\/\//i.test(value)) {
+    return `<a href="${escapeHtml(value)}" target="_blank" rel="noreferrer">${escapeHtml(value)}</a>`;
+  }
+  return escapeHtml(value);
 }
 
 function parseMaybeJson(value, fallback) {
@@ -1287,10 +1323,10 @@ function opsPage() {
           </div>
         </div>
         <div class="panel">
-          <h3>Pending Kai Guang Jobs / 待处理开光任务</h3>
+          <h3>Kai Guang Jobs / 开光任务</h3>
           <div class="table-wrap">
-            <table><thead><tr><th>Job</th><th>Order</th><th>Item</th><th>DaoYin ID</th></tr></thead><tbody>
-              ${jobs.length ? jobs.map((job) => `<tr><td>${job.id}</td><td>${job.order_id}</td><td>${job.order_item_id}</td><td>${job.dao_yin_id || "-"}</td></tr>`).join("") : `<tr><td colspan="4">No pending jobs.</td></tr>`}
+            <table><thead><tr><th>Job</th><th>Order</th><th>Item</th><th>Status</th><th>DaoYin ID</th></tr></thead><tbody>
+              ${jobs.length ? jobs.map((job) => `<tr><td>${job.id}</td><td>${job.order_id}</td><td>${job.order_item_id}</td><td>${job.status}</td><td>${job.dao_yin_id || "-"}</td></tr>`).join("") : `<tr><td colspan="5">No Kai Guang jobs.</td></tr>`}
             </tbody></table>
           </div>
           ${jobs.length ? jobs.map((job) => opsJobForm(job)).join("") : ""}
@@ -1302,25 +1338,46 @@ function opsPage() {
 
 function opsJobForm(job) {
   return `
-    <form class="form ops-job-form" id="opsJobForm-${job.id}" data-ops-job-form style="margin-top:16px">
-      <input name="jobId" type="hidden" value="${job.id}" />
-      <h3>${job.id}</h3>
-      <div class="grid two">
-        <div class="field">
-          <label>Status</label>
-          <select name="status">
-            ${["pending", "scheduled", "in_progress", "completed", "cancelled"].map((status) => `<option value="${status}" ${job.status === status ? "selected" : ""}>${status}</option>`).join("")}
-          </select>
+    <div class="ops-job-form" style="margin-top:16px">
+      <form class="form" id="opsJobForm-${job.id}" data-ops-job-form>
+        <input name="jobId" type="hidden" value="${job.id}" />
+        <h3>${job.id}</h3>
+        <div class="grid two">
+          <div class="field">
+            <label>Status</label>
+            <select name="status">
+              ${["pending", "scheduled", "in_progress", "completed", "cancelled"].map((status) => `<option value="${status}" ${job.status === status ? "selected" : ""}>${status}</option>`).join("")}
+            </select>
+          </div>
+          <div class="field"><label>Temple Location</label><input name="templeLocation" value="${escapeHtml(job.temple_location || "")}" placeholder="Temple / location" /></div>
         </div>
-        <div class="field"><label>Temple Location</label><input name="templeLocation" value="${escapeHtml(job.temple_location || "")}" placeholder="Temple / location" /></div>
-      </div>
-      <div class="grid two">
-        <div class="field"><label>Scheduled At</label><input name="scheduledAt" type="datetime-local" value="${datetimeLocalValue(job.scheduled_at)}" /></div>
-        <div class="field"><label>Completed At</label><input name="completedAt" type="datetime-local" value="${datetimeLocalValue(job.completed_at)}" /></div>
-      </div>
-      <div class="field"><label>Operator Notes</label><input name="operatorNotes" value="${escapeHtml(job.operator_notes || "")}" /></div>
-      <button class="btn primary" type="submit">Update Job</button>
-    </form>
+        <div class="grid two">
+          <div class="field"><label>Scheduled At</label><input name="scheduledAt" type="datetime-local" value="${datetimeLocalValue(job.scheduled_at)}" /></div>
+          <div class="field"><label>Completed At</label><input name="completedAt" type="datetime-local" value="${datetimeLocalValue(job.completed_at)}" /></div>
+        </div>
+        <div class="field"><label>Operator Notes</label><input name="operatorNotes" value="${escapeHtml(job.operator_notes || "")}" /></div>
+        <button class="btn primary" type="submit">Update Job</button>
+      </form>
+      <form class="form" data-ops-recording-form style="margin-top:12px">
+        <input name="consecrationJobId" type="hidden" value="${job.id}" />
+        <input name="daoYinId" type="hidden" value="${escapeHtml(job.dao_yin_id || "")}" />
+        <h3>Recording Metadata</h3>
+        <div class="field"><label>Video Object Key / URL</label><input name="r2ObjectKey" required placeholder="r2://... or https://..." /></div>
+        <div class="grid two">
+          <div class="field"><label>Duration Seconds</label><input name="durationSeconds" type="number" min="0" step="1" placeholder="0" /></div>
+          <div class="field">
+            <label>Review Status</label>
+            <select name="reviewStatus">
+              <option value="uploaded">uploaded</option>
+              <option value="approved">approved</option>
+              <option value="rejected">rejected</option>
+            </select>
+          </div>
+        </div>
+        <label class="check"><input name="customerVisible" type="checkbox" /> <span>Visible to customer</span></label>
+        <button class="btn" type="submit">Create Recording</button>
+      </form>
+    </div>
   `;
 }
 
@@ -1504,6 +1561,7 @@ document.addEventListener("submit", (event) => {
   if (event.target.id === "opsCreateIdForm") submitOpsCreateId(event.target);
   if (event.target.id === "opsAssignIdForm") submitOpsAssignId(event.target);
   if (event.target.matches("[data-ops-job-form]")) submitOpsJob(event.target);
+  if (event.target.matches("[data-ops-recording-form]")) submitOpsRecording(event.target);
 });
 
 document.addEventListener("click", (event) => {
@@ -2333,6 +2391,37 @@ async function submitOpsJob(form) {
     state.opsStatus = "idle";
     state.orderDataStatus = {};
     ensureOpsData(true);
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function submitOpsRecording(form) {
+  const data = Object.fromEntries(new FormData(form).entries());
+
+  if (!backendStatus.available) {
+    alert("Backend API is not connected.");
+    return;
+  }
+
+  try {
+    await apiRequest("/api/consecration-recordings", {
+      method: "POST",
+      headers: opsHeaders(),
+      body: JSON.stringify({
+        consecrationJobId: data.consecrationJobId,
+        daoYinId: data.daoYinId || null,
+        r2ObjectKey: data.r2ObjectKey,
+        durationSeconds: data.durationSeconds ? Number(data.durationSeconds) : 0,
+        reviewStatus: data.reviewStatus,
+        customerVisible: Boolean(data.customerVisible)
+      })
+    });
+    form.reset();
+    state.opsStatus = "idle";
+    state.orderDataStatus = {};
+    ensureOpsData(true);
+    alert("Recording metadata created.");
   } catch (err) {
     alert(err.message);
   }
