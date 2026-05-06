@@ -121,4 +121,5 @@ Recommended for the current public preview: Cloudflare Pages.
 - `daoyin-wireframe-prototype.md`: low-fidelity wireframe spec.
 - `PUBLIC_DEPLOYMENT_CHECKLIST.md`: public deployment checklist.
 - `CONTENT_RIGHTS_NOTES.md`: copyright and source-use notes.
+- `CLOUDFLARE_D1_SETUP.md`: D1 database creation, schema import, and Pages binding steps.
 - `MVP_BACKEND_AND_CONTENT_PLAN.md`: backend, database, sharing, Kai Guang workflow, and content model plan.
