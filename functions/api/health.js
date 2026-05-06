@@ -5,6 +5,7 @@ export function onRequestGet({ env }) {
     ok: true,
     service: "daoyin-api",
     dbConfigured: Boolean(env.DB),
+    recordingsBucketConfigured: Boolean(env.RECORDINGS_BUCKET),
     time: new Date().toISOString(),
   });
 }

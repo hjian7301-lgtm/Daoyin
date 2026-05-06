@@ -222,6 +222,7 @@ const backendStatus = {
   checking: false,
   available: false,
   dbConfigured: false,
+  recordingsBucketConfigured: false,
   message: "Not checked"
 };
 
@@ -385,8 +386,9 @@ function ensureBackendStatus() {
       backendStatus.checked = true;
       backendStatus.available = Boolean(data.ok && data.dbConfigured);
       backendStatus.dbConfigured = Boolean(data.dbConfigured);
+      backendStatus.recordingsBucketConfigured = Boolean(data.recordingsBucketConfigured);
       backendStatus.message = backendStatus.available
-        ? "Backend API and D1 database are connected."
+        ? `Backend API and D1 database are connected.${backendStatus.recordingsBucketConfigured ? " R2 recordings are connected." : " R2 recordings are not configured yet."}`
         : "Backend API is live, but Cloudflare D1 binding DB is not configured yet.";
     })
     .catch(() => {
@@ -412,6 +414,30 @@ async function apiRequest(path, options = {}) {
       "content-type": "application/json",
       ...(options.headers || {})
     }
+  });
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok || data.ok === false) {
+    const err = new Error(data.error?.message || `API request failed with ${response.status}.`);
+    err.status = response.status;
+    err.details = data.error?.details;
+    throw err;
+  }
+
+  return data;
+}
+
+async function apiUploadRequest(path, formData, headers = {}) {
+  const base = apiBase();
+  if (!base && base !== "") throw new Error("Backend API is not available in file preview.");
+
+  const response = await fetch(`${base}${path}`, {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      ...headers
+    },
+    body: formData
   });
   const data = await response.json().catch(() => ({}));
 
@@ -1072,19 +1098,21 @@ function recordingSummaryHtml(order, job) {
       ${recordings.map((recording) => {
         const visible = Boolean(recording.customer_visible || recording.customerVisible);
         if (!visible) return "Recording uploaded, under review";
-        return `Recording available: ${recordingReferenceHtml(recording)}`;
+        return `Recording available: ${recordingReferenceHtml(order, recording)}`;
       }).join("<br>")}
     </div>
   `;
 }
 
-function recordingReferenceHtml(recording) {
+function recordingReferenceHtml(order, recording) {
   const value = recording.r2_object_key || recording.r2ObjectKey || "";
   if (!value) return "No reference yet";
   if (/^https?:\/\//i.test(value)) {
     return `<a href="${escapeHtml(value)}" target="_blank" rel="noreferrer">${escapeHtml(value)}</a>`;
   }
-  return escapeHtml(value);
+  if (!state.user?.id || !order?.id) return "Private video available";
+  const href = `${apiBase()}/api/consecration-recordings/${encodeURIComponent(recording.id)}/video?orderId=${encodeURIComponent(order.id)}&userId=${encodeURIComponent(state.user.id)}`;
+  return `<a href="${href}" target="_blank" rel="noreferrer">Open recording video</a>`;
 }
 
 function parseMaybeJson(value, fallback) {
@@ -1362,7 +1390,8 @@ function opsJobForm(job) {
         <input name="consecrationJobId" type="hidden" value="${job.id}" />
         <input name="daoYinId" type="hidden" value="${escapeHtml(job.dao_yin_id || "")}" />
         <h3>Recording Metadata</h3>
-        <div class="field"><label>Video Object Key / URL</label><input name="r2ObjectKey" required placeholder="r2://... or https://..." /></div>
+        <div class="field"><label>Upload Video</label><input name="file" type="file" accept="video/mp4,video/quicktime,video/webm" /></div>
+        <div class="field"><label>Video Object Key / URL</label><input name="r2ObjectKey" placeholder="Optional if uploading a video file" /></div>
         <div class="grid two">
           <div class="field"><label>Duration Seconds</label><input name="durationSeconds" type="number" min="0" step="1" placeholder="0" /></div>
           <div class="field">
@@ -2398,6 +2427,7 @@ async function submitOpsJob(form) {
 
 async function submitOpsRecording(form) {
   const data = Object.fromEntries(new FormData(form).entries());
+  const file = form.elements.file?.files?.[0];
 
   if (!backendStatus.available) {
     alert("Backend API is not connected.");
@@ -2405,6 +2435,23 @@ async function submitOpsRecording(form) {
   }
 
   try {
+    if (file) {
+      const uploadData = new FormData(form);
+      uploadData.set("customerVisible", data.customerVisible ? "true" : "false");
+      await apiUploadRequest("/api/consecration-recordings/upload", uploadData, opsHeaders());
+      form.reset();
+      state.opsStatus = "idle";
+      state.orderDataStatus = {};
+      ensureOpsData(true);
+      alert("Recording video uploaded.");
+      return;
+    }
+
+    if (!String(data.r2ObjectKey || "").trim()) {
+      alert("Upload a video file or enter a video object key / URL.");
+      return;
+    }
+
     await apiRequest("/api/consecration-recordings", {
       method: "POST",
       headers: opsHeaders(),

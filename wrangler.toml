@@ -6,3 +6,8 @@ compatibility_date = "2026-05-06"
 binding = "DB"
 database_name = "daoyin-mvp"
 database_id = "9537dc05-02c5-4180-9241-1d7fa8397dd8"
+
+# Enable after R2 is activated in the Cloudflare account and the bucket exists.
+# [[r2_buckets]]
+# binding = "RECORDINGS_BUCKET"
+# bucket_name = "daoyin-recordings"

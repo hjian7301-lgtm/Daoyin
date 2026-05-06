@@ -100,6 +100,12 @@ Included API entry points:
 - `PATCH /api/consecration-jobs/:id`: update Kai Guang job.
 - `GET /api/consecration-recordings?jobId=...`: recording metadata list.
 - `POST /api/consecration-recordings`: create recording metadata.
+- `POST /api/consecration-recordings/upload`: upload a recording video to the private R2 bucket and create metadata. Requires `RECORDINGS_BUCKET`.
+- `GET /api/consecration-recordings/:id/video`: stream an approved customer-visible recording for the matching order/user, or with an operations token.
+
+R2 recording upload:
+
+The code path is ready, but Cloudflare R2 must be enabled on the account before the `RECORDINGS_BUCKET` binding can be activated. After enabling R2, create a `daoyin-recordings` bucket and uncomment the `[[r2_buckets]]` block in `wrangler.toml`.
 
 D1 schema:
 

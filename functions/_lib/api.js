@@ -44,6 +44,16 @@ export function requireDb(env) {
   return env.DB;
 }
 
+export function requireRecordingsBucket(env) {
+  if (!env.RECORDINGS_BUCKET) {
+    const bucketError = new Error("Cloudflare R2 binding RECORDINGS_BUCKET is not configured.");
+    bucketError.status = 503;
+    throw bucketError;
+  }
+
+  return env.RECORDINGS_BUCKET;
+}
+
 export function requireOps(env, request) {
   const expected = env.OPS_TOKEN;
 
