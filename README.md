@@ -66,6 +66,14 @@ The front end uses progressive sync:
 - Draft orders automatically create pending Kai Guang jobs for items with Kai Guang selected.
 - Guest readings remain local until a real account/auth flow is connected.
 
+Hidden operations page:
+
+```text
+/#/ops
+```
+
+This internal prototype page can create DaoYin IDs, view pending Kai Guang jobs, and assign DaoYin IDs to order items. It is not linked in public navigation.
+
 Included API entry points:
 
 - `GET /api/health`: deployment and DB binding check.

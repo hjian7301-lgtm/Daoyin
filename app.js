@@ -209,6 +209,9 @@ const initialState = {
   orderData: {},
   orderDataStatus: {},
   orderDataError: {},
+  opsData: null,
+  opsStatus: "idle",
+  opsError: "",
   adminTab: "products"
 };
 
@@ -348,6 +351,7 @@ function render() {
     "/order": () => orderPage(params.id),
     "/account": accountPage,
     "/admin": adminPage,
+    "/ops": opsPage,
     "/consecration": consecrationPage,
     "/journal": journalPage,
     "/about": aboutPage
@@ -503,6 +507,36 @@ function cloudOrder(orderId) {
   const key = orderCacheKey(orderId);
   if (state.orderDataStatus[key] !== "ready") return null;
   return state.orderData[key] || null;
+}
+
+function ensureOpsData(force = false) {
+  if (!backendStatus.available) return;
+  if (!force && (state.opsStatus === "loading" || state.opsStatus === "ready")) return;
+
+  state.opsStatus = "loading";
+  state.opsError = "";
+  save();
+
+  Promise.all([
+    apiRequest("/api/dao-yin-ids?status=available"),
+    apiRequest("/api/consecration-jobs?status=pending")
+  ])
+    .then(([idsData, jobsData]) => {
+      state.opsData = {
+        ids: idsData.ids || [],
+        jobs: jobsData.jobs || []
+      };
+      state.opsStatus = "ready";
+      state.opsError = "";
+    })
+    .catch((err) => {
+      state.opsStatus = "error";
+      state.opsError = err.message;
+    })
+    .finally(() => {
+      save();
+      if (route().path === "/ops") render();
+    });
 }
 
 function remoteReadingToLocal(reading) {
@@ -1177,6 +1211,66 @@ function adminContent() {
   `;
 }
 
+function opsPage() {
+  if (backendStatus.available) ensureOpsData();
+  const ids = state.opsData?.ids || [];
+  const jobs = state.opsData?.jobs || [];
+
+  return `
+    <main class="page">
+      <div class="section-head">
+        <div><p class="eyebrow">Hidden Operations</p><h2>DaoYin Operations / 道印运营</h2><p class="muted">Internal prototype surface. Not linked in public navigation.</p></div>
+        <button class="btn ghost" data-action="ops-refresh">Refresh</button>
+      </div>
+      ${!backendStatus.available ? `<div class="notice">Backend D1 is not connected. Operations require the Cloudflare API.</div>` : ""}
+      ${state.opsStatus === "loading" ? `<div class="notice">Loading operations data from D1.</div>` : ""}
+      ${state.opsStatus === "error" ? `<div class="notice">Could not load operations data: ${escapeHtml(state.opsError)}</div>` : ""}
+      <section class="grid two">
+        <div class="panel">
+          <h3>Create DaoYin ID / 新增道印编号</h3>
+          <form class="form" id="opsCreateIdForm">
+            <div class="field"><label>Code</label><input name="code" required placeholder="DY-2026-INC-00001" /></div>
+            <div class="grid two">
+              <div class="field"><label>Product SKU</label><input name="productSku" placeholder="INC-001" /></div>
+              <div class="field"><label>Category</label><input name="productCategory" placeholder="Incense / 香" /></div>
+            </div>
+            <div class="field"><label>Notes</label><input name="notes" placeholder="Optional" /></div>
+            <button class="btn primary" type="submit">Create ID</button>
+          </form>
+        </div>
+        <div class="panel">
+          <h3>Assign DaoYin ID / 分配编号</h3>
+          <form class="form" id="opsAssignIdForm">
+            <div class="field"><label>Order ID</label><input name="orderId" required placeholder="O-..." /></div>
+            <div class="field"><label>Order Item ID</label><input name="orderItemId" required placeholder="OI-..." /></div>
+            <div class="field"><label>DaoYin Code</label><input name="code" placeholder="Optional; leave blank for auto" /></div>
+            <label class="check"><input name="allowDraftAssignment" type="checkbox" /> <span>Prototype override: allow draft assignment before payment</span></label>
+            <button class="btn primary" type="submit">Assign ID</button>
+          </form>
+        </div>
+      </section>
+      <section class="grid two" style="margin-top:18px">
+        <div class="panel">
+          <h3>Available DaoYin IDs</h3>
+          <div class="table-wrap">
+            <table><thead><tr><th>Code</th><th>SKU</th><th>Category</th><th>Status</th></tr></thead><tbody>
+              ${ids.length ? ids.map((id) => `<tr><td>${id.code}</td><td>${id.product_sku || "-"}</td><td>${id.product_category || "-"}</td><td>${id.status}</td></tr>`).join("") : `<tr><td colspan="4">No available IDs.</td></tr>`}
+            </tbody></table>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>Pending Kai Guang Jobs / 待处理开光任务</h3>
+          <div class="table-wrap">
+            <table><thead><tr><th>Job</th><th>Order</th><th>Item</th><th>DaoYin ID</th></tr></thead><tbody>
+              ${jobs.length ? jobs.map((job) => `<tr><td>${job.id}</td><td>${job.order_id}</td><td>${job.order_item_id}</td><td>${job.dao_yin_id || "-"}</td></tr>`).join("") : `<tr><td colspan="4">No pending jobs.</td></tr>`}
+            </tbody></table>
+          </div>
+        </div>
+      </section>
+    </main>
+  `;
+}
+
 function consecrationPage() {
   return `
     <main class="page">
@@ -1308,6 +1402,11 @@ function handleClick(event) {
     save();
     render();
   }
+  if (action === "ops-refresh") {
+    state.opsStatus = "idle";
+    ensureOpsData(true);
+    render();
+  }
 }
 
 function handleInput(event) {
@@ -1336,6 +1435,8 @@ document.addEventListener("submit", (event) => {
   if (event.target.id === "loginForm") submitLogin(event.target);
   if (event.target.id === "verifyLoginForm") submitVerifyLogin(event.target);
   if (event.target.id === "productForm") submitProduct(event.target);
+  if (event.target.id === "opsCreateIdForm") submitOpsCreateId(event.target);
+  if (event.target.id === "opsAssignIdForm") submitOpsAssignId(event.target);
 });
 
 document.addEventListener("click", (event) => {
@@ -2073,6 +2174,60 @@ async function submitVerifyLogin(form) {
 
   save();
   render();
+}
+
+async function submitOpsCreateId(form) {
+  const data = Object.fromEntries(new FormData(form).entries());
+
+  if (!backendStatus.available) {
+    alert("Backend API is not connected.");
+    return;
+  }
+
+  try {
+    await apiRequest("/api/dao-yin-ids", {
+      method: "POST",
+      body: JSON.stringify({
+        code: data.code,
+        productSku: data.productSku,
+        productCategory: data.productCategory,
+        notes: data.notes
+      })
+    });
+    form.reset();
+    state.opsStatus = "idle";
+    ensureOpsData(true);
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+async function submitOpsAssignId(form) {
+  const data = Object.fromEntries(new FormData(form).entries());
+
+  if (!backendStatus.available) {
+    alert("Backend API is not connected.");
+    return;
+  }
+
+  try {
+    const result = await apiRequest("/api/dao-yin-ids/assign", {
+      method: "POST",
+      body: JSON.stringify({
+        orderId: data.orderId,
+        orderItemId: data.orderItemId,
+        code: data.code || undefined,
+        allowDraftAssignment: Boolean(data.allowDraftAssignment)
+      })
+    });
+    form.reset();
+    state.opsStatus = "idle";
+    state.orderDataStatus = {};
+    ensureOpsData(true);
+    alert(`Assigned DaoYin ID: ${result.daoYinId.code}`);
+  } catch (err) {
+    alert(err.message);
+  }
 }
 
 function submitProduct(form) {
