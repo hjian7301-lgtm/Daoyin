@@ -14,6 +14,15 @@ Expected before D1 binding:
 
 After D1 binding, `dbConfigured` should become `true`.
 
+## Current Status
+
+Completed through Wrangler CLI:
+
+- D1 database created: `daoyin-mvp`
+- D1 database ID: `9537dc05-02c5-4180-9241-1d7fa8397dd8`
+- Schema imported from `database/schema.sql`
+- Pages binding configured in `wrangler.toml` with binding name `DB`
+
 ## 1. Create The D1 Database
 
 In Cloudflare dashboard:
@@ -48,6 +57,17 @@ npx wrangler d1 execute daoyin-mvp --remote --file=database/schema.sql
 ```
 
 ## 3. Bind D1 To Pages
+
+Current repository binding:
+
+```toml
+[[d1_databases]]
+binding = "DB"
+database_name = "daoyin-mvp"
+database_id = "9537dc05-02c5-4180-9241-1d7fa8397dd8"
+```
+
+Dashboard fallback:
 
 In Cloudflare dashboard:
 

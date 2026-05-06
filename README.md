@@ -123,6 +123,7 @@ Recommended for the current public preview: Cloudflare Pages.
 - `functions/`: Cloudflare Pages Functions API scaffold.
 - `database/schema.sql`: Cloudflare D1 schema.
 - `_routes.json`: Cloudflare Pages Functions route scope for `/api/*`.
+- `wrangler.toml`: Cloudflare Pages project config and D1 binding.
 - `daoyin-functional-prototype.md`: functional spec.
 - `daoyin-wireframe-prototype.md`: low-fidelity wireframe spec.
 - `PUBLIC_DEPLOYMENT_CHECKLIST.md`: public deployment checklist.

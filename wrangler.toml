@@ -1,0 +1,8 @@
+name = "daoyin-git"
+pages_build_output_dir = "."
+compatibility_date = "2026-05-06"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "daoyin-mvp"
+database_id = "9537dc05-02c5-4180-9241-1d7fa8397dd8"
