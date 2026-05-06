@@ -78,6 +78,25 @@ const hexagrams = [
   tags: tagFor(index + 1)
 }));
 
+const oracleSlips = [
+  { grade: "上上签", poem: "云开月明静候佳音", guidance: "势已渐开，宜守正待时，勿急躁求成。" },
+  { grade: "上签", poem: "风入松庭万象新", guidance: "有新机入局，宜顺势整理旧事，稳步推进。" },
+  { grade: "上签", poem: "清泉出石心自明", guidance: "先澄清本心，再定取舍，答案会变得清楚。" },
+  { grade: "中上签", poem: "静观其变守中行", guidance: "此时重在观察，不宜被外界声势牵动。" },
+  { grade: "中上签", poem: "一灯照夜渐通途", guidance: "眼前虽未大开，但已有可循之路。" },
+  { grade: "中平签", poem: "山高水远步须稳", guidance: "事情需要耐心与次第，先处理最确定的一步。" },
+  { grade: "中平签", poem: "云厚无雨且养真", guidance: "条件尚未成熟，宜蓄力、修正、等待时机。" },
+  { grade: "小吉签", poem: "竹影扶风有暗香", guidance: "小处见吉，贵在柔和表达与持续积累。" },
+  { grade: "小吉签", poem: "月在中天慎独行", guidance: "可行，但需自持，不宜轻许承诺。" },
+  { grade: "待时签", poem: "雷藏地底勿妄动", guidance: "动机未定、形势未明时，先止后观。" },
+  { grade: "待时签", poem: "水绕前山路未穷", guidance: "看似受阻，实则仍有回旋空间。" },
+  { grade: "警省签", poem: "火照寒潭见本心", guidance: "此卦提醒你看清真实原因，避免只看表象。" },
+  { grade: "警省签", poem: "履霜知戒慎初萌", guidance: "细微处已有征兆，宜尽早修正。" },
+  { grade: "转机签", poem: "旧叶辞枝新气生", guidance: "适合断舍离，调整后会出现新的秩序。" },
+  { grade: "转机签", poem: "舟过浅滩风渐顺", guidance: "难处正在松动，但仍需稳住节奏。" },
+  { grade: "守成签", poem: "玉藏深山待良工", guidance: "价值需要时间显现，先守其真，再求其用。" }
+];
+
 function tagFor(id) {
   const bank = [
     ["clarity", "strength", "gold"],
@@ -434,14 +453,16 @@ function readingPage(id) {
   if (!reading) return `<main class="page"><div class="empty">No reading yet.</div></main>`;
   const hex = hexagrams[reading.hexagramId - 1];
   const changed = hexagrams[reading.changedHexagramId - 1];
+  const slip = oracleSlipForReading(reading);
   const recs = recommendProducts(hex.tags).slice(0, 3);
   return `
     <main class="page">
       <section class="result-layout">
         <div class="slip">
           <div>
-            <div class="grade">上上签</div>
-            <div class="poem">云开月明静候佳音</div>
+            <div class="grade">${slip.grade}</div>
+            <div class="poem">${slip.poem}</div>
+            <div class="slip-guidance">${slip.guidance}</div>
           </div>
         </div>
         <div class="panel">
@@ -1004,6 +1025,14 @@ function flip() {
   return { value: heads ? 3 : 2, face: heads ? "阳" : "阴" };
 }
 
+function oracleSlipForReading(reading) {
+  if (reading.oracleSlip) return reading.oracleSlip;
+  const movingCount = (reading.lines || []).filter((line) => line.moving).length;
+  const questionWeight = String(reading.question || "").length;
+  const key = (reading.hexagramId * 7 + reading.changedHexagramId * 3 + movingCount * 11 + questionWeight) % oracleSlips.length;
+  return oracleSlips[key];
+}
+
 function finishReading() {
   const draft = state.draftReading;
   if (!draft || draft.casts.length < 6) return;
@@ -1026,6 +1055,7 @@ function finishReading() {
     hexagramId,
     changedHexagramId
   };
+  reading.oracleSlip = oracleSlipForReading(reading);
   state.readings.push(reading);
   state.draftReading = null;
   save();
@@ -1071,6 +1101,7 @@ function exportReadingPoster(readingId, preset = "story") {
 }
 
 function drawStoryPoster(ctx, canvas, reading, hex, changed, hideQuestion) {
+  const slip = oracleSlipForReading(reading);
   drawPosterBackground(ctx, canvas.width, canvas.height);
   drawPosterSeal(ctx, 86, 86, 118);
   drawPosterText(ctx, "DaoYin / 道印", 230, 122, 34, "#efe9dc", "600");
@@ -1082,8 +1113,8 @@ function drawStoryPoster(ctx, canvas, reading, hex, changed, hideQuestion) {
   drawHexLines(ctx, reading.lines, 390, 645, 300, 24, true);
 
   drawOracleSlip(ctx, 132, 835, 280, 620);
-  drawVerticalText(ctx, "云开月明静候佳音", 272, 930, 54, "#101412");
-  drawPosterText(ctx, "上上签", 272, 895, 38, "#9c2f24", "500", "center", "'STSong', 'Songti SC', serif");
+  drawVerticalText(ctx, slip.poem, 272, 930, 54, "#101412");
+  drawPosterText(ctx, slip.grade, 272, 895, 38, "#9c2f24", "500", "center", "'STSong', 'Songti SC', serif");
 
   drawPosterPanel(ctx, 468, 835, 480, 620);
   drawPosterText(ctx, "周易原文", 516, 915, 36, "#d2bd80", "500", "left", "'STSong', 'Songti SC', serif");
@@ -1100,6 +1131,7 @@ function drawStoryPoster(ctx, canvas, reading, hex, changed, hideQuestion) {
 }
 
 function drawSquarePoster(ctx, canvas, reading, hex, changed, hideQuestion) {
+  const slip = oracleSlipForReading(reading);
   drawPosterBackground(ctx, canvas.width, canvas.height);
   drawPosterSeal(ctx, 64, 64, 96);
   drawPosterText(ctx, "DaoYin / 道印", 184, 102, 30, "#efe9dc", "600");
@@ -1110,8 +1142,8 @@ function drawSquarePoster(ctx, canvas, reading, hex, changed, hideQuestion) {
   drawHexLines(ctx, reading.lines, 214, 600, 232, 18, true);
 
   drawOracleSlip(ctx, 612, 184, 258, 476);
-  drawPosterText(ctx, "上上签", 741, 238, 34, "#9c2f24", "500", "center", "'STSong', 'Songti SC', serif");
-  drawVerticalText(ctx, "云开月明静候佳音", 741, 286, 42, "#101412");
+  drawPosterText(ctx, slip.grade, 741, 238, 34, "#9c2f24", "500", "center", "'STSong', 'Songti SC', serif");
+  drawVerticalText(ctx, slip.poem, 741, 286, 42, "#101412");
 
   drawPosterPanel(ctx, 92, 744, 896, 210);
   drawPosterText(ctx, "周易原文", 132, 806, 30, "#d2bd80", "500", "left", "'STSong', 'Songti SC', serif");
@@ -1121,6 +1153,7 @@ function drawSquarePoster(ctx, canvas, reading, hex, changed, hideQuestion) {
 }
 
 function drawWidePoster(ctx, canvas, reading, hex, changed, hideQuestion) {
+  const slip = oracleSlipForReading(reading);
   drawPosterBackground(ctx, canvas.width, canvas.height);
   drawPosterSeal(ctx, 72, 70, 98);
   drawPosterText(ctx, "DaoYin / 道印", 194, 108, 32, "#efe9dc", "600");
@@ -1132,8 +1165,8 @@ function drawWidePoster(ctx, canvas, reading, hex, changed, hideQuestion) {
   drawHexLines(ctx, reading.lines, 252, 620, 266, 18, true);
 
   drawOracleSlip(ctx, 690, 168, 240, 520);
-  drawPosterText(ctx, "上上签", 810, 226, 32, "#9c2f24", "500", "center", "'STSong', 'Songti SC', serif");
-  drawVerticalText(ctx, "云开月明静候佳音", 810, 278, 43, "#101412");
+  drawPosterText(ctx, slip.grade, 810, 226, 32, "#9c2f24", "500", "center", "'STSong', 'Songti SC', serif");
+  drawVerticalText(ctx, slip.poem, 810, 278, 43, "#101412");
 
   drawPosterPanel(ctx, 990, 168, 472, 520);
   drawPosterText(ctx, "周易原文", 1034, 246, 32, "#d2bd80", "500", "left", "'STSong', 'Songti SC', serif");

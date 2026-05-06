@@ -546,6 +546,15 @@ h3 {
   line-height: 1.9;
 }
 
+.slip .slip-guidance {
+  max-width: 230px;
+  margin-top: 34px;
+  color: rgba(16, 20, 18, 0.68);
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.8;
+}
+
 .meta-row,
 .service-row,
 .summary-line,
